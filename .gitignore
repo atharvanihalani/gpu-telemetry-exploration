@@ -1,0 +1,4 @@
+telemetry_baseline.csv
+*.deb
+__pycache__/
+.ipynb_checkpoints/

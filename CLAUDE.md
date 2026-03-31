@@ -266,6 +266,20 @@ Copy off before stopping. Simplest: `scp` or VS Code file explorer drag-and-drop
 
 ---
 
+## Claude memory — setup on a new node
+
+Memory files are stored in `memory/` in this repo (committed to GitHub) so they survive pod restarts.
+
+On a fresh node, restore them with:
+```bash
+mkdir -p /root/.claude/projects/-root-gpu-telemetry-exploration/memory
+cp memory/* /root/.claude/projects/-root-gpu-telemetry-exploration/memory/
+```
+
+Run this before starting a session so context (project state, Atharva's preferences, etc.) is available.
+
+---
+
 ## Atharva's context and preferences
 
 - New to GPU telemetry tooling (first time using DCGM/pynvml). Has strong conceptual background on GPU architecture, NVSwitch, NVLink, training vs inference differences.

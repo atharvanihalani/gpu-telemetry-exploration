@@ -76,3 +76,33 @@ data/e1_telemetry.csv
 
 ## Priority
 **Highest evasion priority.** This directly tests the most-cited detection signal (power).
+
+---
+
+## Implementation notes (2026-03-31)
+
+### File
+`workloads/train_e1.py`
+
+### Design decisions
+- **Imports GPT model class from train_t1.py** rather than duplicating ~100 lines of model code. Only the power cap logic and `main()` are new. Training loop is a local copy (not imported) because it needs to be wrapped in try/finally for power restoration.
+- **Only rank 0 modifies power limits.** pynvml sees all GPUs from any process, so having all 8 ranks race to set limits would be redundant and potentially error-prone. A `dist.barrier()` after `setup_power_cap()` ensures all ranks wait for the cap to take effect before training starts.
+- **Module-level `_power_state` dict** holds handles and default values so that atexit/signal handlers can access them without closures or global variables.
+- **Three-layer restoration safety:**
+  1. `try/finally` around `_run_training()` in `main()`
+  2. `atexit.register()` for unexpected exits
+  3. Signal handlers for SIGTERM and SIGINT that restore, then re-raise with default handler
+- **`restore_power()` is idempotent** — tracks `_power_state["restored"]` to avoid double-restoring.
+- **Respects hardware min/max constraints** via `nvmlDeviceGetPowerManagementLimitConstraints()`. The target is clamped to `[min_mw, max_mw]`.
+- **Prints manual restore command at startup** so the user can recover after a `kill -9`.
+
+### Config constant
+```python
+POWER_CAP_PCT = 0.22  # ~22% of TDP → ~88W on A100, ~154W on H100
+```
+Easy to change for sweep experiments (e.g., 0.15, 0.22, 0.30, 0.40).
+
+### Verified
+- `python -c "import workloads.train_e1"` — imports cleanly, no side effects
+- AST parses without errors
+- Not yet run on GPU (requires `torchrun --nproc_per_node=8 workloads/train_e1.py`)

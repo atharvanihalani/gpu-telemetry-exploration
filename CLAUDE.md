@@ -158,16 +158,111 @@ These give more granular compute pipeline metrics than the standard utilization 
 
 ---
 
+## Session 2 — Mock Workload Fingerprinting (2026-03-30/31)
+
+### What we built
+
+The focus shifted from passive observation to active fingerprinting: running controlled mock workloads and collecting labeled telemetry to establish ground-truth signatures for training vs. inference.
+
+**New files:**
+```
+mock_conditions.md          — full taxonomy of workload conditions to test (training variants,
+                              inference variants, adversarial/evasion, other baselines)
+workload_plan.md            — detailed design decisions for T1 + I2 scripts
+workloads/
+  collect_telemetry.py      — shared background telemetry collector (pynvml, 1Hz, CSV output)
+  train_t1.py               — T1: DDP pre-training mock (torchrun --nproc_per_node=8)
+  infer_i2.py               — I2: streaming autoregressive inference (Llama-3.1-8B)
+data/
+  t1_telemetry.csv          — 270s steady-state training telemetry
+  i2_telemetry.csv          — 368s steady-state inference telemetry
+notebooks/
+  comparison.ipynb          — side-by-side T1 vs I2 analysis (4 plot types)
+comparison_timeseries.png
+comparison_distributions.png
+comparison_heatmaps.png
+comparison_power_variability.png
+```
+
+### T1 — Large Pre-Training
+
+- Architecture: GPT-style decoder-only transformer, **3.37B params** (d_model=3072, 28 layers, 24 heads)
+- Note: 6.4B config OOMed — activations at batch=4, seq=2048 consumed ~75GB leaving no room for AdamW states
+- Parallelism: DDP, 8 GPUs, `torchrun --nproc_per_node=8 workloads/train_t1.py`
+- Data: synthetic random token tensors (telemetry-equivalent to real data)
+- Precision: bf16 weights/grads, fp32 AdamW states
+- Duration: 5 min (30s warmup, 270s steady, 5s cooldown)
+
+### I2 — Streaming Autoregressive Inference
+
+- Model: **Llama-3.1-8B** (public/ungated on HuggingFace, ~16GB download)
+- Setup: one model per GPU, 8 independent streams, no tensor parallelism
+- Generation: greedy decode, 64-token prompt → 512 new tokens per request, repeated
+- Duration: 5 min (loading + 30s warmup + 368s steady + 5s cooldown)
+- Note: Llama-3.1-8B is ungated — no HF token needed
+
+### Key findings
+
+Steady-state signal comparison (mean across 8 GPUs):
+
+| Signal | T1 training | I2 inference | Ratio |
+|---|---|---|---|
+| Power | 392W | 88W | **4.4×** |
+| SM utilization | 100% | 4.8% | **21×** |
+| Memory used | 66,858 MiB | 17,451 MiB | **3.8×** |
+| Temperature | 66°C | 34°C | **1.9×** |
+| Power cross-GPU std | 31.3W | 2.0W | **16×** |
+
+**Most important finding**: the GPU×time power heatmap shows vertical white stripes in T1 — all 8 GPUs simultaneously dropping power at regular intervals (~15–20s period = one training step). This is the allreduce sync heartbeat. It's completely absent in I2. A detector looking for periodic, synchronized power dips across all GPUs would be hard to evade.
+
+**Zero overlap** between T1 and I2 on every signal at 1Hz polling. Any single signal is sufficient to classify correctly under these conditions. The interesting question is what happens under evasion conditions — see `mock_conditions.md`.
+
+### Installed packages (pip, system Python)
+
+```
+nvidia-ml-py    — pynvml
+pandas
+matplotlib
+seaborn
+transformers
+accelerate
+huggingface_hub
+```
+
+### Running the workloads
+
+```bash
+# T1 — pre-training
+torchrun --nproc_per_node=8 workloads/train_t1.py
+
+# I2 — inference (no HF login needed, model is public)
+python workloads/infer_i2.py
+```
+
+### Next up — evasion conditions
+
+Priority order from `mock_conditions.md`:
+1. **E1** — power-capped training (`nvmlDeviceSetPowerManagementLimit` to ~150W)
+2. **E4** — PCIe-only allreduce (`NCCL_P2P_DISABLE=1`) — kills NVLink signal entirely
+3. **T3** — gradient accumulation (reduces allreduce frequency)
+4. **I3** — high-throughput batched inference (hardest inference case to distinguish from training)
+
+---
+
 ## Output files to save before stopping the pod
 
-- `telemetry_baseline.csv` — raw collected metrics
-- `telemetry_dashboard.png` — time-series plots
-- `telemetry_heatmap.png` — GPU×time heatmaps
-- `nvlink_topology.png` — NVLink connectivity matrix
-- `nvlink_per_link.png` — per-link NVLink heatmap (from DCGM)
-- `nvlink_rate_timeline.png` — NVLink traffic over time
+**From session 1 (baseline exploration):**
+- `telemetry_baseline.csv`
+- `telemetry_dashboard.png`, `telemetry_heatmap.png`, `nvlink_topology.png`
+- `nvlink_per_link.png`, `nvlink_rate_timeline.png`
 
-Copy these off the pod before stopping. Simplest: `scp` or VS Code's file explorer drag-and-drop.
+**From session 2 (mock workloads):**
+- `data/t1_telemetry.csv`, `data/i2_telemetry.csv`
+- `comparison_timeseries.png`, `comparison_distributions.png`
+- `comparison_heatmaps.png`, `comparison_power_variability.png`
+- `notebooks/comparison.ipynb`
+
+Copy off before stopping. Simplest: `scp` or VS Code file explorer drag-and-drop.
 
 ---
 

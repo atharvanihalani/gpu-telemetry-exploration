@@ -236,25 +236,52 @@ seaborn
 transformers
 accelerate
 huggingface_hub
+vllm==0.6.3.post1  — added in session 3 for I3 (pinned to PyTorch 2.4.x compat)
 ```
 
 ### Running the workloads
 
 ```bash
-# T1 — pre-training
-torchrun --nproc_per_node=8 workloads/train_t1.py
+# Training variants
+torchrun --nproc_per_node=8 workloads/train_t1.py   # T1 — large DDP pre-training (3.37B)
+torchrun --nproc_per_node=8 workloads/train_t2.py   # T2 — small DDP pre-training (136M)
+torchrun --nproc_per_node=8 workloads/train_t3.py   # T3 — gradient accumulation (16 steps)
+torchrun --nproc_per_node=8 workloads/train_t4.py   # T4 — pipeline parallelism (PiPPy, 8 stages)
+torchrun --nproc_per_node=8 workloads/train_t5.py   # T5 — gradient checkpointing (6.71B, fallback 3.37B)
+torchrun --nproc_per_node=8 workloads/train_t6.py   # T6 — FSDP + CPU offload (ZeRO-3)
 
-# I2 — inference (no HF login needed, model is public)
-python workloads/infer_i2.py
+# Inference variants
+python workloads/infer_i2.py                         # I2 — streaming autoregressive (Llama-3.1-8B)
+python workloads/infer_i3.py                         # I3 — high-throughput vLLM (8-GPU TP)
+python workloads/infer_i4.py                         # I4 — speculative decoding (draft + verifier)
+
+# Evasion conditions
+torchrun --nproc_per_node=8 workloads/train_e1.py   # E1 — power-capped training (~22% TDP)
+python workloads/run_e2.py                           # E2 — cover traffic (train 4-7 + infer 0-3)
+torchrun --nproc_per_node=8 workloads/train_e3.py   # E3 — intermittent training (30s on / 10s off)
+torchrun --nproc_per_node=8 workloads/train_e4.py   # E4 — PCIe-only allreduce (NVLink disabled)
+torchrun --nproc_per_node=8 workloads/train_e5.py   # E5 — smoothed allreduce (Ring, 128MB, 1ch)
+
+# Baselines
+python workloads/baseline_b1.py                      # B1 — idle with model loaded
 ```
 
-### Next up — evasion conditions
+### What's been collected vs pending
 
-Priority order from `mock_conditions.md`:
-1. **E1** — power-capped training (`nvmlDeviceSetPowerManagementLimit` to ~20–25% of TDP)
-2. **E4** — PCIe-only allreduce (`NCCL_P2P_DISABLE=1`) — kills NVLink signal entirely
-3. **T3** — gradient accumulation (reduces allreduce frequency)
-4. **I3** — high-throughput batched inference (hardest inference case to distinguish from training)
+**Collected (session 2, on A100):** T1, I2 → `data/t1_telemetry.csv`, `data/i2_telemetry.csv`
+
+**Implemented but not yet run:** T2, T3, T4, T5, T6, I3, I4, E1, E2, E3, E4, E5, B1
+
+**Skipped (deprioritized):** I1 (batched forward pass — bracketed by I2+I3), B2 (checkpoint I/O), B3 (CUDA graph warmup)
+
+### Priority order for next collection runs
+
+1. **E1** — power-capped training (tests most-cited detection signal)
+2. **E4** — PCIe-only allreduce (tests strongest detection signal — NVLink heartbeat)
+3. **I3** — high-throughput inference (hardest inference case, closest to training)
+4. **T3** — gradient accumulation (stresses temporal pattern detector)
+5. **E3** — intermittent training (breaks sustained-power assumption)
+6. Everything else as time/budget allows
 
 ---
 
@@ -271,7 +298,66 @@ Priority order from `mock_conditions.md`:
 - `comparison_heatmaps.png`, `comparison_power_variability.png`
 - `notebooks/comparison.ipynb`
 
+**From session 3+ (new workloads, when collected):**
+- `data/t2_telemetry.csv` through `data/e5_telemetry.csv`
+
 Copy off before stopping. Simplest: `scp` or VS Code file explorer drag-and-drop.
+
+---
+
+## Session 3 — Full Workload Implementation (2026-03-31)
+
+### What we built
+
+Implemented all remaining workload scripts from `mock_conditions.md`. Moved to an H100 SXM5-80GB node. Made all code hardware-agnostic (A100/H100).
+
+**New workload scripts:**
+```
+workloads/
+  train_t2.py       — T2: small pre-training (136M params, edge case)
+  train_t3.py       — T3: gradient accumulation (ACCUM_STEPS=16)
+  train_t4.py       — T4: pipeline parallelism (PiPPy, 8 stages)
+  train_t5.py       — T5: gradient checkpointing (6.71B primary, 3.37B fallback)
+  train_t6.py       — T6: FSDP + CPU offload (ZeRO-3 equivalent)
+  infer_i3.py       — I3: high-throughput vLLM (tensor_parallel_size=8)
+  infer_i4.py       — I4: speculative decoding (draft + verifier per GPU)
+  train_e1.py       — E1: power-capped training (22% TDP, robust restore)
+  run_e2.py         — E2: cover traffic orchestrator (train 4-7 + infer 0-3)
+  train_e3.py       — E3: intermittent training (30s on / 10s off)
+  train_e4.py       — E4: PCIe-only allreduce (NVLink disabled)
+  train_e5.py       — E5: smoothed allreduce (Ring, 128MB buffer, 1 channel)
+  baseline_b1.py    — B1: idle with Llama-3.1-8B loaded
+```
+
+**New reference files:**
+```
+hardware_notes.md           — A100 vs H100 comparison + switching checklist
+plans/                      — implementation plans for all conditions (17 files)
+```
+
+**Key changes to existing files:**
+- `collect_telemetry.py`: added `gpu_model` column to CSVs for hardware tagging
+- `infer_i2.py`: added `TELEMETRY_DISABLED` env var support for E2 orchestration
+- `CLAUDE.md`: hardware specs now cover both A100 and H100
+- All hardcoded A100 values replaced with TDP-relative references
+
+### Design patterns
+
+- **Thin wrappers** (E4, E5): import model from T1, set env vars, override duration/output
+- **Clean forks** (T2, T3, T5, E3): copy T1 with specific modifications
+- **Orchestrators** (E2): subprocess management with single telemetry collector
+- **External libs** (I3, I4): vLLM for tensor-parallel inference, HF assisted generation
+- **Safety guards** (E1): try/finally + atexit + signal handlers for power limit restoration
+
+### Skipped conditions
+
+- **I1** (batched forward pass) — bracketed by I2 + I3, low info value
+- **B2** (checkpoint I/O) — short transient, won't affect sustained-signal detectors
+- **B3** (CUDA graph warmup) — same reasoning as B2
+
+### Next steps
+
+Run the implemented workloads and collect telemetry. See priority order above. After collection, build a comparison analysis notebook covering all conditions.
 
 ---
 

@@ -69,3 +69,22 @@ data/e5_telemetry.csv
 
 ## Complexity
 Low. Environment variables only, no code changes. But interpreting the results requires DCGM per-link NVLink data at sub-second resolution to see the smoothing effect.
+
+---
+
+## Implementation notes
+
+**Implemented**: `workloads/train_e5.py`
+
+Follows the same thin-wrapper pattern as E4 (`workloads/train_e4.py`):
+- Sets NCCL env vars (`NCCL_ALGO`, `NCCL_BUFFSIZE`, `NCCL_MAX_NCHANNELS`) at module top level, **before** any `torch.distributed` import, ensuring NCCL picks them up during `init_process_group`.
+- Imports `GPT` model class and all config constants (`D_MODEL`, `N_LAYERS`, `N_HEADS`, `FFN_MULT`, `SEQ_LEN`, `BATCH_SIZE`, `VOCAB_SIZE`, `LR`, `WARMUP_S`) from `train_t1.py`.
+- Overrides: `DURATION_S = 10 * 60` (10 min), `OUTPUT_CSV = data/e5_telemetry.csv` (overridable via `E5_OUTPUT_CSV` env var).
+- Logs all three NCCL env var values at startup (rank 0 only) for confirmation.
+- Training loop is identical to T1/E4 — same model, optimizer, synthetic data, phase tracking.
+
+**Default config** is the "aggressive" smoothing setting (128MB buffer, 1 channel). To test milder configs, edit the constants at the top of the file:
+- Mild: `NCCL_BUFFSIZE = "16777216"` (16MB), `NCCL_MAX_NCHANNELS = "4"`
+- Medium: `NCCL_BUFFSIZE = "134217728"` (128MB), `NCCL_MAX_NCHANNELS = "2"`
+
+**Verified**: `python -c "import workloads.train_e5"` succeeds (no GPU or torchrun required for import).

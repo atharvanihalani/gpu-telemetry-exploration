@@ -26,6 +26,7 @@ FIELDS = [
     "timestamp",
     "phase",
     "gpu",
+    "gpu_model",
     "power_w",
     "sm_util_pct",
     "mem_util_pct",
@@ -73,6 +74,13 @@ class TelemetryCollector:
     def _run(self):
         n_gpus = pynvml.nvmlDeviceGetCount()
         handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(n_gpus)]
+        gpu_names = []
+        for h in handles:
+            try:
+                gpu_names.append(pynvml.nvmlDeviceGetName(h))
+            except pynvml.NVMLError:
+                gpu_names.append("unknown")
+        print(f"[telemetry] detected {n_gpus}× {gpu_names[0]}")
 
         while not self._stop_event.is_set():
             ts = time.time()
@@ -130,6 +138,7 @@ class TelemetryCollector:
                     "timestamp": f"{ts:.3f}",
                     "phase": phase,
                     "gpu": i,
+                    "gpu_model": gpu_names[i],
                     "power_w": f"{power:.1f}",
                     "sm_util_pct": sm_util,
                     "mem_util_pct": mem_util,

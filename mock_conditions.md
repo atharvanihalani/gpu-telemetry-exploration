@@ -69,9 +69,11 @@ Small draft model generates candidate tokens; large verifier model accepts/rejec
 ## Adversarial / Evasion Conditions
 
 ### E1 — Power-Capped Training
-Full pre-training run with `nvmlDeviceSetPowerManagementLimit` throttled to ~150W (from ~400W default).
+Full pre-training run with `nvmlDeviceSetPowerManagementLimit` throttled to ~20–25% of TDP (e.g., ~150W on A100/400W, ~150–175W on H100/700W).
 
 **Evasion angle**: power signature flattens toward inference/idle range. Training slows down proportionally. Tests whether power alone is a sufficient signal, or whether NVLink + SM patterns still discriminate.
+
+**Note**: The cap target should be set relative to the GPU's TDP, not a fixed wattage — the goal is to land in the inference power range for that specific GPU.
 
 ### E2 — Fake Inference Cover Traffic
 Run inference on GPUs 0–3 simultaneously with training on GPUs 4–7.

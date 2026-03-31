@@ -40,24 +40,32 @@ This is **open-ended exploration**, not hypothesis testing. The deliverable is u
 
 ## Hardware specs
 
-| Item | Value |
-|---|---|
-| GPU | NVIDIA A100-SXM4-80GB |
-| GPU count | 8 |
-| NVLink version | NVLink 3.0 |
-| NVLink ports per GPU | 12 (L0–L11) |
-| NVLink bandwidth | 600 GB/s bidirectional per GPU |
-| HBM2e per GPU | 80 GB |
-| GPU TDP | ~400W |
-| NVSwitch | 4 chips on HGX baseboard (all 8 GPUs fully connected) |
-| Inter-GPU topology | All-to-all within baseboard via NVSwitch |
-| Scale-out | InfiniBand (not relevant for this single-node session) |
+We flip between A100 and H100 nodes. Both are 8-GPU, 80GB, all-to-all NVSwitch. The workload scripts are hardware-agnostic — the `gpu_model` column in telemetry CSVs records which GPU produced each row.
+
+| Item | A100 SXM4 | H100 SXM5 |
+|---|---|---|
+| GPU | NVIDIA A100-SXM4-80GB | NVIDIA H100 80GB HBM3 |
+| GPU count | 8 | 8 |
+| NVLink version | NVLink 3.0 | NVLink 4.0 |
+| NVLink ports per GPU | 12 (L0–L11) | 18 (L0–L17) |
+| NVLink bandwidth | 600 GB/s bidirectional | 900 GB/s bidirectional |
+| Memory | 80 GB HBM2e | 80 GB HBM3 |
+| GPU TDP | ~400W | ~700W |
+| Max SM clock | ~1410 MHz | ~1980 MHz |
+| NVSwitch | 4 chips (all-to-all) | 4 chips (all-to-all) |
+| Scale-out | InfiniBand | InfiniBand |
 
 **On an idle node, expect roughly:**
-- Power: 50–150W per GPU
+- Power: ~60–80W per GPU (both A100 and H100)
 - SM utilization: ~0%
 - NVLink traffic: ~0 (maybe a few MB of control-plane)
 - Memory: whatever is loaded (should be near-zero if nothing's running)
+
+**What changes between A100 and H100** (see also `hardware_notes.md`):
+- Training power envelope: ~400W (A100) vs ~700W (H100)
+- NVLink DCGM field range: 409–420 (A100, 12 links) vs 409–426 (H100, 18 links)
+- Steps/sec will differ (~2–3× faster on H100 for same model)
+- E1 power cap target must be set relative to TDP, not a fixed wattage
 
 ---
 
@@ -96,18 +104,19 @@ nv-hostengine
 # Verify it can see GPUs
 dcgmi discovery -l
 
-# Find available NVLink field IDs (should see 409-420 for A100)
+# Find available NVLink field IDs (409-420 on A100, 409-426 on H100)
 dcgmi fieldids -l | grep -i nvlink
 ```
 
-**Key DCGM field IDs for A100:**
+**Key DCGM field IDs (common across A100/H100):**
 - `203` = SM utilization (%)
 - `155` = Power draw (W)
 - `150` = Temperature (°C)
 - `100` / `101` = Framebuffer free / used (MiB)
 - `409–420` = NVLink bandwidth L0–L11 (cumulative bytes per link — diff consecutive readings for rate)
+- `421–426` = NVLink bandwidth L12–L17 (**H100 only** — 18 links vs A100's 12)
 
-**Note**: Fields 409–420 are **cumulative counters**, not rates. To get GB/s, diff two readings and divide by the interval.
+**Note**: Fields 409+ are **cumulative counters**, not rates. To get GB/s, diff two readings and divide by the interval.
 
 **Known DCGM gotcha**: Some versions have a bug where Fabric Manager state isn't accurately reported on out-of-band queries, and there's a race condition in the FSP NVLink query that can crash the FSP (fixed in newer versions). If `dcgmi dmon` hangs or produces garbage, try restarting `nv-hostengine`.
 
@@ -144,7 +153,7 @@ Things worth exploring beyond the notebook:
 **1. Run `nvidia-smi topo -m`** to see the full NVLink topology matrix directly. Compare with what the notebook's connectivity matrix shows.
 
 **2. Uncomment and run the stress tests** in the notebook's shelved section:
-- Compute stress (matmul loop): should spike power to ~400W/GPU, SM util to ~100%, NVLink stays near zero
+- Compute stress (matmul loop): should spike power to near TDP (~400W A100, ~700W H100), SM util to ~100%, NVLink stays near zero
 - All-reduce stress (`torchrun --nproc_per_node=8 allreduce_stress.py`): should show the NVLink heartbeat pattern
 
 **3. Compare baseline vs stress plots side by side** — this is the core of what we're trying to understand.
@@ -201,7 +210,7 @@ comparison_power_variability.png
 - Duration: 5 min (loading + 30s warmup + 368s steady + 5s cooldown)
 - Note: Llama-3.1-8B is ungated — no HF token needed
 
-### Key findings
+### Key findings (collected on A100 SXM4 — absolute values will differ on H100)
 
 Steady-state signal comparison (mean across 8 GPUs):
 
@@ -242,7 +251,7 @@ python workloads/infer_i2.py
 ### Next up — evasion conditions
 
 Priority order from `mock_conditions.md`:
-1. **E1** — power-capped training (`nvmlDeviceSetPowerManagementLimit` to ~150W)
+1. **E1** — power-capped training (`nvmlDeviceSetPowerManagementLimit` to ~20–25% of TDP)
 2. **E4** — PCIe-only allreduce (`NCCL_P2P_DISABLE=1`) — kills NVLink signal entirely
 3. **T3** — gradient accumulation (reduces allreduce frequency)
 4. **I3** — high-throughput batched inference (hardest inference case to distinguish from training)

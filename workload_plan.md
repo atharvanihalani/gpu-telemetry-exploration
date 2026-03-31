@@ -8,9 +8,10 @@
 
 Decoder-only transformer, sized to saturate GPU memory like a real pre-training run.
 
-**Sizing math** (DDP on 8×A100-80GB, bf16 weights+grads, fp32 AdamW states):
+**Sizing math** (DDP on 8×80GB GPUs — A100 or H100, bf16 weights+grads, fp32 AdamW states):
 - Memory per param: ~12 bytes (2 weights + 2 grads + 8 Adam m+v)
 - With ~20GB headroom for activations: **~5B params max per GPU**
+- Same memory constraint on both A100 (80GB HBM2e) and H100 (80GB HBM3)
 
 | Config | d_model | n_layers | n_heads | Approx params | Est. GPU mem |
 |---|---|---|---|---|---|

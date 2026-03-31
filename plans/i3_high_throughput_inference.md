@@ -71,3 +71,63 @@ Medium. vLLM handles the hard parts (continuous batching, KV cache management, t
 
 ## Priority
 High — this is the most important remaining inference variant. If the detector can't distinguish I3 from T1, the detector needs redesigning.
+
+---
+
+## Implementation notes (2026-03-31)
+
+### What was built
+
+`workloads/infer_i3.py` — Option A (vLLM) was chosen. Single script, no external runner needed.
+
+### vLLM version and compatibility
+
+- **vLLM 0.6.3.post1** installed — the latest version targeting PyTorch 2.4.x / CUDA 12.x
+- Newer vLLM versions (0.6.4+) require PyTorch 2.5+; even newer (0.8+) require PyTorch 2.6+
+- Installation downgraded PyTorch from 2.4.1+cu124 to 2.4.0+cu121 (bundled CUDA runtime)
+  - This is benign: CUDA 12.x minor versions are forward-compatible, and the system CUDA toolkit (12.4) is still available
+  - Only conflict: torchaudio 2.4.1 wants torch 2.4.1 — harmless since torchaudio is unused
+- If running on a fresh node, install with: `pip install vllm==0.6.3.post1`
+
+### Architecture decisions
+
+- **Tensor parallelism** (`tensor_parallel_size=8`): model sharded across all 8 GPUs via vLLM's native TP. This means NVLink carries point-to-point TP communication (column/row parallel splits), not symmetric allreduce.
+- **Batch size 32**: chosen to saturate GPU compute without OOM. Can be tuned up to 64 if memory allows (depends on KV cache size at max_tokens=512).
+- **`ignore_eos=True`**: forces generation to always produce exactly MAX_TOKENS tokens, ensuring consistent sustained load (no early stopping on EOS).
+- **`enforce_eager=False`**: allows vLLM to use CUDA graphs for higher throughput after warmup.
+- **Greedy decoding** (`temperature=0`): deterministic, same as I2 for fair comparison.
+- **Prompts**: pseudo-random English-like text (~64 tokens). Real-ish text avoids degenerate tokenisation that could skew memory/compute patterns.
+
+### Telemetry integration
+
+- `TelemetryCollector` starts *before* vLLM init (captures model loading phase on all 8 GPUs)
+- Phase labels: `loading` -> `warmup` (30s) -> `steady` (remaining ~4.5 min) -> `cooldown` (5s)
+- Collector runs in a daemon thread in the main process; pynvml sees all 8 GPUs regardless of vLLM's internal process structure
+- Output: `data/i3_telemetry.csv` (same schema as T1/I2)
+
+### How to run
+
+```bash
+python workloads/infer_i3.py
+```
+
+No `torchrun` needed — vLLM manages multi-GPU internally via Ray (multi-node) or multiprocessing (single-node).
+
+### Expected runtime
+
+- Model loading: ~30-60s (downloading if not cached, then sharding across 8 GPUs)
+- Warmup: 30s
+- Steady generation: ~4.5 min
+- Total: ~6-7 min
+
+### What to look for in the telemetry
+
+Key question: can I3 be distinguished from T1 (DDP training)?
+
+Expected distinguishing signals:
+1. **NVLink pattern**: TP traffic is asymmetric point-to-point (attention sharding), not symmetric allreduce bursts. No periodic heartbeat.
+2. **Memory**: lower than T1 (~30-40 GB vs ~67 GB) — no optimizer states, no gradients.
+3. **Power variability**: T1 shows periodic synchronized power dips (allreduce sync). I3 should be more uniformly sustained.
+4. **SM utilisation**: possibly comparable to T1 (60-90% vs 100%) — this is the signal most likely to overlap.
+
+If power and SM util overlap between I3 and T1, the NVLink symmetry pattern becomes the critical discriminator.

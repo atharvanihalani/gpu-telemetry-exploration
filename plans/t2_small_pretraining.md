@@ -13,10 +13,10 @@ Fork `train_t1.py` → `train_t2.py`. Only change: smaller model config. Everyth
 | n_layers | 28 | 12 |
 | n_heads | 24 | 12 |
 | ffn_mult | 4 | 4 |
-| Approx params | ~3.2B | ~125M |
-| Est. GPU mem | ~38 GB | ~1.5 GB |
+| Approx params | ~3.2B | ~136M |
+| Est. GPU mem | ~38 GB | ~2-3 GB |
 
-The 125M config is deliberately small — it should use <5% of VRAM, making memory usage close to inference levels. Power and SM util will still be high during compute, but with much shorter step times.
+The ~136M config (135.7M actual — the extra beyond 125M is from the embedding/head layers with vocab_size=32000) is deliberately small — it should use <5% of VRAM, making memory usage close to inference levels. Power and SM util will still be high during compute, but with much shorter step times.
 
 ### Key parameters
 - `BATCH_SIZE`: Start at 4 (same as T1). Could increase since memory is plentiful — but keeping it the same isolates the model-size variable.
@@ -47,3 +47,11 @@ data/t2_telemetry.csv
 
 ## Dependencies
 - Same as T1: PyTorch, pynvml
+
+## Implementation status
+**Done.** `workloads/train_t2.py` implemented and validated:
+- Module imports cleanly (`python -c "import workloads.train_t2"`)
+- Model instantiates on CPU, param count = 135,697,920 (135.7M)
+- Clean fork of T1 with only config constants changed
+- Log lines prefixed with `[T2]` to distinguish from T1 output
+- Step logging every 50 steps (vs T1's every 10) since steps will be much faster

@@ -75,3 +75,40 @@ data/e2_telemetry.csv
 
 ## Complexity
 Medium. Orchestrating two concurrent workloads with different GPU assignments. Main risk: telemetry collector needs to see all 8 GPUs from a single process.
+
+---
+
+## Implementation notes (2026-03-31)
+
+### What was implemented
+
+1. **`workloads/run_e2.py`** — orchestrator script that:
+   - Starts a single `TelemetryCollector` on all 8 GPUs → `data/e2_telemetry.csv`
+   - Launches training on GPUs 4–7 via `torchrun --nproc_per_node=4 --master_port=29501`
+   - Launches inference on GPUs 0–3 via `python workloads/infer_i2.py`
+   - Both sub-processes get `TELEMETRY_DISABLED=1` so only the orchestrator collects
+   - Phase labels: loading → warmup (30s) → steady → cooldown (5s)
+   - Monitors both processes; if one dies, kills the other and stops cleanly
+   - Uses `master_port=29501` to avoid conflicts with default 29500
+
+2. **`workloads/train_t1.py`** — already had `TELEMETRY_DISABLED` support and guarded collector calls (no changes needed)
+
+3. **`workloads/infer_i2.py`** — added guards (`if collector:`) around all `collector.set_phase()`, `collector.stop()` calls that were previously unguarded (lines 148–160 in the original)
+
+### Design decisions
+
+- **10s init wait**: The orchestrator waits 10s after launching both sub-processes before entering "warmup". This gives DDP init and model loading time to start, but the real warmup happens during the 30s warmup phase.
+- **Process health checks**: Polled every 1s during warmup and steady phases. If either process exits, the other is killed immediately.
+- **Graceful shutdown**: SIGTERM first, then SIGKILL after 10s timeout.
+- **No `__init__.py`**: The workloads directory doesn't need one — scripts use `sys.path.insert` for imports, consistent with existing T1/I2 scripts.
+
+### Important: CUDA_VISIBLE_DEVICES remapping
+
+When `CUDA_VISIBLE_DEVICES=4,5,6,7` is set, the training sub-process sees those as `cuda:0` through `cuda:3` internally. The telemetry collector in the orchestrator (which runs without `CUDA_VISIBLE_DEVICES` restriction) sees the actual GPU indices 0–7. This means:
+- Training telemetry will show activity on physical GPUs 4–7
+- Inference telemetry will show activity on physical GPUs 0–3
+- The CSV correctly records physical GPU indices since the collector runs in the orchestrator process
+
+### Verification
+
+All three scripts pass syntax check (`ast.parse`) and module import (`import workloads.run_e2` etc.).

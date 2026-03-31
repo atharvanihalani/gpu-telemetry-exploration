@@ -120,9 +120,12 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
     # Start telemetry collector
-    collector = TelemetryCollector(OUTPUT_CSV)
-    collector.start()
-    collector.set_phase("loading")
+    # When TELEMETRY_DISABLED is set, skip collector (orchestrator owns it).
+    collector = None
+    if not os.environ.get("TELEMETRY_DISABLED"):
+        collector = TelemetryCollector(OUTPUT_CSV)
+        collector.start()
+        collector.set_phase("loading")
 
     # Launch one thread per GPU
     ready_events = [threading.Event() for _ in range(n_gpus)]
@@ -142,19 +145,22 @@ def main():
     for ev in ready_events:
         ev.wait()
     print("All GPUs ready — starting warmup phase")
-    collector.set_phase("warmup")
+    if collector:
+        collector.set_phase("warmup")
 
     # Switch to steady after warmup
     time.sleep(WARMUP_S)
-    collector.set_phase("steady")
+    if collector:
+        collector.set_phase("steady")
 
     # Wait for all workers to finish
     for t in threads:
         t.join()
 
-    collector.set_phase("cooldown")
-    time.sleep(5)
-    collector.stop()
+    if collector:
+        collector.set_phase("cooldown")
+        time.sleep(5)
+        collector.stop()
     print("Done.")
 
 

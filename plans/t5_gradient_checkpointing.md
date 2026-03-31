@@ -64,3 +64,41 @@ data/t5_telemetry.csv
 
 ## Dependencies
 - Same as T1 + `torch.utils.checkpoint`
+
+---
+
+## Implementation notes (2026-03-31)
+
+### What was built
+`workloads/train_t5.py` — fork of T1 with gradient checkpointing on every transformer block.
+
+### Actual param counts (verified on CPU)
+| Config | d_model | n_layers | n_heads | Actual params |
+|---|---|---|---|---|
+| Primary (6.4B) | 4096 | 32 | 32 | **6.71B** |
+| Fallback (3.2B) | 3072 | 28 | 24 | **3.37B** (matches T1) |
+
+### Key design decisions
+- **Automatic OOM fallback**: tries 6.4B first with a full test forward+backward pass to trigger any OOM early, then catches `torch.cuda.OutOfMemoryError` and falls back to 3.2B. Cleanup (`del model, optimizer; torch.cuda.empty_cache()`) happens before fallback allocation.
+- **`use_reentrant=False`**: uses the newer, safer checkpointing API that doesn't require `torch.autograd.Function` and handles non-tensor args correctly.
+- **Checkpointing scope**: applied per transformer block (not per attention/FFN sublayer). This is the standard granularity — each block's activations are discarded and recomputed during backward.
+- **Everything else identical to T1**: DDP, synthetic data, bf16, AdamW, batch=4, seq=2048, 5min duration, 30s warmup, same telemetry collector.
+
+### Validation performed (no GPU execution)
+- Syntax parse: OK
+- Module import: OK
+- CPU instantiation of both configs: OK, param counts verified
+- CPU forward+backward with checkpointing on a tiny model: OK, all params received gradients
+
+### Not yet run
+The script has not been executed with `torchrun` — no GPU resources consumed. The 6.4B config's actual memory usage with checkpointing is still an estimate (~35-40 GB). If it still OOMs (unlikely but possible), the fallback to 3.2B will activate automatically.
+
+### Launch command
+```bash
+torchrun --nproc_per_node=8 workloads/train_t5.py
+```
+
+### Output
+```
+data/t5_telemetry.csv
+```

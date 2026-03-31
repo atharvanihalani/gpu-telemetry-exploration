@@ -177,7 +177,7 @@ The focus shifted from passive observation to active fingerprinting: running con
 ```
 mock_conditions.md          — full taxonomy of workload conditions to test (training variants,
                               inference variants, adversarial/evasion, other baselines)
-workload_plan.md            — detailed design decisions for T1 + I2 scripts
+plans/t1_i2_implemented.md  — detailed design decisions for T1 + I2 scripts
 workloads/
   collect_telemetry.py      — shared background telemetry collector (pynvml, 1Hz, CSV output)
   train_t1.py               — T1: DDP pre-training mock (torchrun --nproc_per_node=8)

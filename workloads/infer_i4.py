@@ -55,10 +55,10 @@ from workloads.collect_telemetry import TelemetryCollector
 # Config
 # ---------------------------------------------------------------------------
 VERIFIER_MODEL_ID  = "meta-llama/Llama-3.1-8B"
-DRAFT_MODEL_ID     = "meta-llama/Llama-3.2-1B"        # gated — same tokenizer
-FALLBACK_DRAFT_ID  = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # ungated — different tokenizer
+DRAFT_MODEL_ID     = "Qwen/Qwen3-0.6B"                # ungated, modern 0.6B
+FALLBACK_DRAFT_ID  = "Qwen/Qwen2.5-0.5B"              # ungated fallback
 
-DURATION_S         = 5 * 60
+DURATION_S         = 10 * 60  # 10 min — loading 2 models/GPU eats ~4 min
 WARMUP_S           = 30
 MAX_NEW_TOKENS     = 512     # tokens per generation request before resetting
 PROMPT_LEN         = 64      # synthetic prompt length in tokens

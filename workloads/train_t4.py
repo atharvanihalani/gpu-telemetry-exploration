@@ -216,6 +216,12 @@ def main():
         seq_len=SEQ_LEN,
     )
 
+    # Cast to bf16 before tracing so PiPPy records bf16 activation dtypes.
+    # This must match the autocast dtype used in the training loop below.
+    # LayerNorm weight/bias stay fp32 internally but outputs are bf16 under
+    # autocast — casting the full model here keeps tracing consistent.
+    model_cpu = model_cpu.to(torch.bfloat16)
+
     if is_rank0:
         n_params = sum(p.numel() for p in model_cpu.parameters())
         print(f"Total parameters: {n_params / 1e9:.2f}B")

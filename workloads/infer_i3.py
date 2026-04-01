@@ -152,7 +152,6 @@ def main():
         gpu_memory_utilization=GPU_MEM_UTIL,
         dtype="auto",               # bf16 on A100/H100
         trust_remote_code=False,
-        max_seq_len_to_capture=8192, # covers prompt + generation
         enforce_eager=False,         # allow CUDA graphs
     )
     print("vLLM engine ready.")

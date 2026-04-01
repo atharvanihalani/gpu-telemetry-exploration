@@ -3,3 +3,4 @@ telemetry_baseline.csv
 __pycache__/
 .ipynb_checkpoints/
 .env
+.claude/settings.local.json

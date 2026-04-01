@@ -43,7 +43,7 @@ import os
 #   Aggressive: BUFFSIZE=128MB, MAX_NCHANNELS=1   (maximum smoothing)
 NCCL_ALGO = "Ring"
 NCCL_BUFFSIZE = "134217728"   # 128MB (default is 4MB)
-NCCL_MAX_NCHANNELS = "1"      # single channel (default: auto ~8-12)
+NCCL_MAX_NCHANNELS = "4"      # 4 channels (default: auto ~8-12, was 1 but NCCL timed out)
 
 os.environ["NCCL_ALGO"] = NCCL_ALGO
 os.environ["NCCL_BUFFSIZE"] = NCCL_BUFFSIZE

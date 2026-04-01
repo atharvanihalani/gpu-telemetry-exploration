@@ -285,26 +285,6 @@ python workloads/baseline_b1.py                      # B1 — idle with model lo
 
 ---
 
-## Output files to save before stopping the pod
-
-**From session 1 (baseline exploration):**
-- `telemetry_baseline.csv`
-- `telemetry_dashboard.png`, `telemetry_heatmap.png`, `nvlink_topology.png`
-- `nvlink_per_link.png`, `nvlink_rate_timeline.png`
-
-**From session 2 (mock workloads):**
-- `data/t1_telemetry.csv`, `data/i2_telemetry.csv`
-- `comparison_timeseries.png`, `comparison_distributions.png`
-- `comparison_heatmaps.png`, `comparison_power_variability.png`
-- `notebooks/comparison.ipynb`
-
-**From session 3+ (new workloads, when collected):**
-- `data/t2_telemetry.csv` through `data/e5_telemetry.csv`
-
-Copy off before stopping. Simplest: `scp` or VS Code file explorer drag-and-drop.
-
----
-
 ## Session 3 — Full Workload Implementation (2026-03-31)
 
 ### What we built
@@ -358,6 +338,132 @@ plans/                      — implementation plans for all conditions (17 file
 ### Next steps
 
 Run the implemented workloads and collect telemetry. See priority order above. After collection, build a comparison analysis notebook covering all conditions.
+
+---
+
+## Session 4 — Full Telemetry Collection (2026-04-01)
+
+### What we built
+
+Replaced the pynvml telemetry backend with DCGM at 10Hz. Collected telemetry for 11 of the 15 planned conditions (all on H100 SXM5).
+
+**Key change — `collect_telemetry.py` rewrite:**
+- Backend: DCGM Python bindings (`/usr/local/dcgm/bindings/python3/`) instead of pynvml
+- Sample rate: **10Hz** (was 1Hz) — captures sub-second spikes and the allreduce heartbeat at much finer resolution
+- **20 columns** (was 14):
+  - Added: `sm_active`, `tensor_active`, `dram_active`, `fp16_active`, `nvlink_tx_bytes_s`, `nvlink_rx_bytes_s`, `pcie_tx_bytes_s`, `pcie_rx_bytes_s`, `throttle_reasons`, `energy_mj`
+  - Dropped: `clock_sm_mhz`, `clock_mem_mhz`, `pcie_tx_kib`, `pcie_rx_kib`
+- Same public API — no workload script changes needed to adopt the new collector
+
+**DCGM must be running before any workload:**
+```bash
+nv-hostengine   # start if not already running
+dcgmi discovery -l  # verify it sees all 8 GPUs
+```
+
+### Workloads collected (H100, DCGM 10Hz)
+
+| Condition | Rows | Notes |
+|---|---|---|
+| T1 | 26K | Large DDP pre-training (3.37B) — recollected at 10Hz |
+| T2 | 25K | Small pre-training (136M) |
+| T3 | 27K | Gradient accumulation (16 steps) |
+| T4 | 64K | Pipeline parallelism (PiPPy, 8 stages) |
+| T5 | 30K | Gradient checkpointing (6.71B, fallback 3.37B) |
+| T6 | 27K | FSDP + CPU offload (ZeRO-3) |
+| E3 | 55K | Intermittent training (30s on / 10s off) |
+| E4 | 51K | PCIe-only allreduce (NVLink disabled) |
+| I2 | 38K | Streaming autoregressive inference (Llama-3.1-8B) |
+| I3 | 40K | High-throughput vLLM (8-GPU TP) |
+| B1 | 26K | Idle with Llama-3.1-8B loaded |
+
+### Shelved (need fixes before re-running)
+
+- **E1** — RunPod blocks `nvmlDeviceSetPowerManagementLimit` — power limit control not available to tenants. Needs a different evasion approach (e.g. SM clock cap via `nvidia-smi -ac`).
+- **E2** — Cover traffic orchestrator: `train_t1.py` TELEMETRY_DISABLED fix applied and DCGM duplicate group key fixed, but HF token propagation to subprocess env still broken. Fix: explicitly pass `HF_TOKEN` in `os.environ` before `subprocess.Popen`.
+- **E5** — NCCL timeout with Ring/128MB buffer even at 4 channels. Likely too large a buffer for the model size — try smaller model (136M T2 config) or reduce buffer to 16MB.
+- **I4** — `transformers 4.57` meta tensor error when loading 2 models per GPU in threads. Draft model swapped from gated `Llama-3.2-1B` to `Qwen/Qwen3-0.6B` (ungated), but the meta-device init bug persists. Needs investigation.
+
+### Bug fixes made this session
+
+- **T4** (`train_t4.py`): cast model to bf16 before PiPPy trace — was hitting fp32/bf16 dtype mismatch in pipeline stages
+- **T5** (`train_t5.py`): added `optimizer.step()` to OOM probe sequence — was only catching model-creation OOM, not optimizer-state OOM
+- **`train_t1.py`**: added `TELEMETRY_DISABLED` env check so E2 orchestrator doesn't overwrite T1's CSV
+- **`collect_telemetry.py`**: PID-suffixed DCGM group names to avoid duplicate key errors when restarting quickly
+- **`infer_i3.py`**: removed deprecated `max_seq_len_to_capture` for vLLM 0.18.1
+- **`infer_i4.py`**: swapped draft model from gated `meta-llama/Llama-3.2-1B` to ungated `Qwen/Qwen3-0.6B`
+
+### Installed packages (new this session)
+
+```
+datacenter-gpu-manager   — DCGM 3.3.9 (apt)
+nvidia-ml-py3            — pynvml (still needed by E1 for power limit attempts)
+vllm==0.18.1             — upgraded from 0.6.3.post1
+transformers==4.57.6
+pandas
+```
+
+### Key observation
+
+`fp16_active` is always `0.000` across all conditions. Models use bf16, and DCGM field 1008 (`DCGM_FI_PROF_PIPE_FP16_ACTIVE`) tracks FP16 tensor core usage specifically. BF16 activity appears in `tensor_active` instead.
+
+### Running the workloads (updated notes)
+
+```bash
+# DCGM must be running first
+nv-hostengine
+
+# HF_TOKEN must be set for inference workloads — Llama-3.1-8B is now gated
+export HF_TOKEN=<your_token>
+
+# Training variants
+torchrun --nproc_per_node=8 workloads/train_t1.py   # T1 — large DDP pre-training (3.37B)
+torchrun --nproc_per_node=8 workloads/train_t2.py   # T2 — small DDP pre-training (136M)
+torchrun --nproc_per_node=8 workloads/train_t3.py   # T3 — gradient accumulation (16 steps)
+torchrun --nproc_per_node=8 workloads/train_t4.py   # T4 — pipeline parallelism (PiPPy, 8 stages)
+torchrun --nproc_per_node=8 workloads/train_t5.py   # T5 — gradient checkpointing (6.71B, fallback 3.37B)
+torchrun --nproc_per_node=8 workloads/train_t6.py   # T6 — FSDP + CPU offload (ZeRO-3)
+
+# Inference variants
+python workloads/infer_i2.py                         # I2 — streaming autoregressive (Llama-3.1-8B) [needs HF_TOKEN]
+python workloads/infer_i3.py                         # I3 — high-throughput vLLM 0.18.1 (8-GPU TP) [needs HF_TOKEN]
+python workloads/infer_i4.py                         # I4 — speculative decoding [SHELVED — meta tensor bug]
+
+# Evasion conditions
+torchrun --nproc_per_node=8 workloads/train_e1.py   # E1 — power-capped training [SHELVED — RunPod blocks power limits]
+python workloads/run_e2.py                           # E2 — cover traffic [SHELVED — HF token propagation]
+torchrun --nproc_per_node=8 workloads/train_e3.py   # E3 — intermittent training (30s on / 10s off)
+torchrun --nproc_per_node=8 workloads/train_e4.py   # E4 — PCIe-only allreduce (NVLink disabled)
+torchrun --nproc_per_node=8 workloads/train_e5.py   # E5 — smoothed allreduce [SHELVED — NCCL timeout]
+
+# Baselines
+python workloads/baseline_b1.py                      # B1 — idle with Llama-3.1-8B loaded [needs HF_TOKEN]
+```
+
+### Next steps
+
+Build multi-condition comparison analysis notebook covering all 11 collected conditions. Fix shelved workloads (E1, E2, E5, I4) if time/budget allows.
+
+---
+
+## Output files to save before stopping the pod
+
+**From session 1 (baseline exploration):**
+- `telemetry_baseline.csv`
+- `telemetry_dashboard.png`, `telemetry_heatmap.png`, `nvlink_topology.png`
+- `nvlink_per_link.png`, `nvlink_rate_timeline.png`
+
+**From session 2 (mock workloads):**
+- `data/t1_telemetry.csv`, `data/i2_telemetry.csv`
+- `comparison_timeseries.png`, `comparison_distributions.png`
+- `comparison_heatmaps.png`, `comparison_power_variability.png`
+- `notebooks/comparison.ipynb`
+
+**From session 4 (full collection, DCGM 10Hz, H100):**
+- `data/t1_telemetry.csv` through `data/b1_telemetry.csv` (11 files)
+- `data/e2_telemetry.csv`, `data/e5_telemetry.csv` (partial/debug runs)
+
+Copy off before stopping. Simplest: `scp` or VS Code file explorer drag-and-drop.
 
 ---
 

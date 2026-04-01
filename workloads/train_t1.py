@@ -136,9 +136,9 @@ def main():
               f"n_layers={N_LAYERS}, n_heads={N_HEADS}")
         print(f"Sequence length={SEQ_LEN}, batch/GPU={BATCH_SIZE}")
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects; skip when orchestrated (e.g. E2)
     collector = None
-    if is_rank0:
+    if is_rank0 and not os.environ.get("TELEMETRY_DISABLED"):
         collector = TelemetryCollector(OUTPUT_CSV)
         collector.start()
         collector.set_phase("warmup")

@@ -19,8 +19,9 @@ Primary config: 6.4B params (d_model=4096, 32 layers, 32 heads)
 Fallback config: 3.2B params (d_model=3072, 28 layers, 24 heads)
   - Same as T1, used if 6.4B still OOMs for any reason
 
-The script tries 6.4B first, runs a test forward+backward pass to trigger
-any OOM early, and automatically falls back to 3.2B with a clear log message.
+The script tries 6.4B first, runs a test forward+backward+optimizer.step()
+to trigger any OOM early (including AdamW fp32 state allocation), and
+automatically falls back to 3.2B with a clear log message.
 
 Launch:
     torchrun --nproc_per_node=8 workloads/train_t5.py
@@ -194,12 +195,17 @@ def main():
         model = DDP(model, device_ids=[local_rank])
         optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
 
-        # Test forward + backward to trigger any OOM early
+        # Test forward + backward + optimizer.step() to trigger any OOM early.
+        # Must include optimizer.step() because AdamW lazily allocates fp32
+        # optimizer states (momentum + variance buffers) on the first step —
+        # roughly 8 bytes × n_params per GPU. That allocation is what pushes
+        # 6.4B past 80GB, and it won't happen on loss.backward() alone.
         x_test = torch.randint(0, VOCAB_SIZE, (BATCH_SIZE, SEQ_LEN), device=device)
         with torch.amp.autocast("cuda", dtype=torch.bfloat16):
             out = model(x_test)
             loss = out.sum()
         loss.backward()
+        optimizer.step()           # triggers AdamW fp32 state allocation
         optimizer.zero_grad(set_to_none=True)
         del x_test, out, loss
         torch.cuda.empty_cache()

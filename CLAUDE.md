@@ -442,7 +442,76 @@ python workloads/baseline_b1.py                      # B1 — idle with Llama-3.
 
 ### Next steps
 
-Build multi-condition comparison analysis notebook covering all 11 collected conditions. Fix shelved workloads (E1, E2, E5, I4) if time/budget allows.
+Fix shelved workloads (E1, E2, E5, I4) if time/budget allows.
+
+---
+
+## Session 5 — Multi-Condition Comparison Analysis (2026-04-01, local macOS)
+
+### What we built
+
+Built the full multi-condition comparison notebook locally, analyzing all 11 collected datasets. This was a pure analysis session — no RunPod, no data collection.
+
+**New/modified files:**
+```
+notebooks/comparison.ipynb       — full comparison notebook (replaced previous version)
+notebooks/old_comparison.ipynb   — renamed previous comparison notebook
+plots/                           — 12 analysis plots (see below)
+plots/archived/                  — old plots from sessions 1-2
+.venv/                           — local Python venv (pandas, matplotlib, seaborn, numpy, jupyter)
+```
+
+### Plots generated (all in `plots/`)
+
+| File | What it shows |
+|---|---|
+| `01a_distributions_violin.png` | Violin plots — distribution shape per signal (shows E3 bimodality) |
+| `01b_distributions_dotplot.png` | Compact mean ± std dot plots with flag/benign divider |
+| `02_timeseries_power.png` | Power timeseries, 2-section layout |
+| `03_timeseries_sm_active.png` | SM Active timeseries |
+| `04_timeseries_tensor_active.png` | Tensor Active timeseries |
+| `05_timeseries_nvlink_tx.png` | NVLink TX timeseries |
+| `06_heatmap_power.png` | GPU × time power heatmap (shared scale, 6 conditions) |
+| `07_heatmap_nvlink_tx.png` | GPU × time NVLink TX heatmap (shared scale) |
+| `08_cross_gpu_synchrony.png` | Cross-GPU power std over time |
+| `09_tensor_ratio.png` | Tensor/SM ratio box plots + SM vs tensor scatter |
+| `10_nvlink_symmetry.png` | NVLink TX vs RX scatter with zoomed inset |
+| `11_correlations.png` | Per-condition signal correlation matrices |
+
+### Design decisions
+
+- **Binary color scheme**: dark red = Training, light red = Evasion, dark blue = Inference, light blue = Baseline. Framing: red = "things to detect" vs blue = "benign reference".
+- **Two-section layout**: training+evasion (2×4 grid, top) and inference+baseline (1×3, bottom) with rotated section labels. Shared y-axis across all panels per figure.
+- **300s truncation**: all steady-state data clipped to 300s for consistency (some conditions ran 600-800s).
+- **Heatmaps**: shared color scale across all 6 conditions for direct visual comparison.
+- **NVLink symmetry**: single overlaid scatter (not per-condition facets) with inset zoom for low-traffic conditions.
+
+### Key analysis findings
+
+1. **Every evasion breaks ONE signal but leaves others intact:**
+   - E3 (intermittent) breaks sustained power → but on-periods are identical to T1, and the on/off periodicity is itself a detectable pattern
+   - E4 (PCIe-only) breaks NVLink heartbeat → but power (~350W) and SM/tensor are still elevated well above inference (~100W)
+2. **Multi-signal detection is robust**: no single evasion defeats power + NVLink + tensor simultaneously
+3. **Tensor core ratio** (`tensor_active / sm_active`) is a strong standalone classifier — each workload occupies a distinct "lane" in SM-vs-tensor space
+4. **NVLink TX/RX symmetry** cleanly separates allreduce traffic (symmetric, 5-40 GB/s) from everything else (near-zero or asymmetric)
+5. **Cross-GPU synchrony** (power std across GPUs) shows periodic spikes for all training variants — the allreduce heartbeat is visible even in E4 (though at lower amplitude via PCIe)
+6. **Signal correlation structure** differs between training (tight power-SM-tensor-NVLink coupling) and inference (weaker, different pattern)
+
+### Local environment setup
+
+```bash
+# Python venv (macOS, analysis only — no GPU needed)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install pandas matplotlib seaborn numpy jupyter
+```
+
+### Next steps
+
+- Derive concrete detection rules/thresholds from the comparison data
+- Consider what E2 (cover traffic — simultaneous training+inference) would do to multi-signal detection
+- Fix shelved workloads (E1, E2, E5, I4) if returning to RunPod
+- Write up findings for the verification proposal
 
 ---
 

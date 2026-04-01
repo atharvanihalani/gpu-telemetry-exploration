@@ -11,6 +11,7 @@ Goal: build a technical foundation for verifying that AI labs have paused pre-tr
 - Session 2: active fingerprinting — ran T1 (DDP training) and I2 (streaming inference), collected labeled 5-min telemetry CSVs, built comparison notebook
 - Session 3: implemented all remaining workload scripts (T2–T6, I3, I4, E1–E5, B1). Moved to H100 node. Made code hardware-agnostic.
 - Session 4: upgraded collector from pynvml 1Hz to DCGM 10Hz (20 columns). Recollected T1. Ran and collected T2–T6, E3, E4, I2 (recollected), I3, B1. 4 workloads shelved.
+- Session 5: built multi-condition comparison notebook locally (macOS). 12 plots covering distributions, timeseries, heatmaps, synchrony, tensor ratio, NVLink symmetry, correlations.
 
 **Collector upgrade (session 4):** `collect_telemetry.py` now uses DCGM at 10Hz instead of pynvml at 1Hz. Output CSVs have 20 columns including DCGM profiling fields (sm_active, sm_occupancy, tensor_active, fp16_active, dram_active, nvlink_tx_bytes, nvlink_rx_bytes, pcie_tx_bytes, pcie_rx_bytes).
 
@@ -28,6 +29,20 @@ Goal: build a technical foundation for verifying that AI labs have paused pre-tr
 
 **Key finding from session 2**: zero signal overlap between T1 and I2 at 1Hz. The allreduce heartbeat (periodic synchronized power dips across all 8 GPUs) is clearly visible in training and completely absent in inference.
 
-**Next priority**: build a multi-condition comparison analysis notebook covering all 11 collected workloads. Answer: what signal survives each evasion, what combination is hardest to simultaneously fake.
+**Key findings from session 5 (comparison analysis):**
+- Each evasion breaks ONE detection signal but leaves others intact: E3 breaks sustained power, E4 breaks NVLink. Neither breaks everything simultaneously → multi-signal detection is the path forward.
+- E3 (intermittent training) on-periods look identical to T1 — a detector checking any 30s window catches it. The on/off periodicity is itself detectable.
+- E4 (PCIe-only allreduce) kills NVLink heartbeat but power stays elevated (~350W vs ~100W inference), SM/tensor still high. Power+SM alone would catch it.
+- Tensor core ratio (tensor_active / sm_active) is a strong standalone classifier — training clusters at 0.5–0.9 with high SM, inference clusters in the low-SM corner.
+- NVLink TX vs RX is highly symmetric for training (allreduce) and near-zero for inference. Clean separation.
+- Signal correlations differ structurally between training (tight power-SM-tensor-NVLink coupling) and inference (weaker, different structure).
 
-**How to apply:** data collection phase is largely complete. Focus shifts to analysis — building the comparison notebook and deriving detection-relevant conclusions from the full telemetry dataset.
+**Comparison notebook design decisions (session 5):**
+- Binary color scheme: dark/light red = training+evasion ("flag"), dark/light blue = inference+baseline ("benign")
+- Two-section layout: training+evasion (2×4 grid top) vs inference+baseline (1×3 bottom)
+- All data truncated to 300s steady-state for consistency
+- 12 plots saved to `plots/`, old plots archived to `plots/archived/`
+
+**Next priority**: derive concrete detection rules/thresholds from the comparison data. Consider what E2 (cover traffic — training+inference simultaneously) would do to the signal picture. Fix shelved workloads if returning to RunPod.
+
+**How to apply:** data collection is complete. Analysis notebook is built. Focus shifts to deriving detection-relevant conclusions and writing up findings.

@@ -43,6 +43,15 @@ Goal: build a technical foundation for verifying that AI labs have paused pre-tr
 - All data truncated to 300s steady-state for consistency
 - 12 plots saved to `plots/`, old plots archived to `plots/archived/`
 
-**Next priority**: derive concrete detection rules/thresholds from the comparison data. Consider what E2 (cover traffic — training+inference simultaneously) would do to the signal picture. Fix shelved workloads if returning to RunPod.
+**Session 6 — classifier built (2026-04-01):**
+- Built `classifier/` package: 3 threshold rules (power >400W, tensor/SM ratio >0.25, power temporal std >40W) on 60s windows
+- 11/11 conditions classified correctly, 0 false positives, 0 false negatives
+- E4 (PCIe-only allreduce) is the hardest case — only caught by power_std rule
+- Dropped cross-GPU synchrony metric as unprincipled (relies on implementation artifact)
+- Deleted partial data files (i4, e2, e5) — need rerun on RunPod
+- E5 to be rerun with smaller model (T2's 136M) to avoid NCCL timeout
+- Notebook: `notebooks/classify.ipynb` — thin UI over `classifier/` modules
 
-**How to apply:** data collection is complete. Analysis notebook is built. Focus shifts to deriving detection-relevant conclusions and writing up findings.
+**Next priority**: run threshold sweep to check margins. Rerun E2/E5/I4 on RunPod. Consider what E2 (cover traffic) does to the classifier. Write up findings for verification proposal.
+
+**How to apply:** classifier v1 is working. Project is transitioning from exploration to building a detection system. Future work should stress-test the classifier against harder evasion scenarios (especially E2 cover traffic).

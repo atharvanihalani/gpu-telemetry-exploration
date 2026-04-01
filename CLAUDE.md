@@ -508,9 +508,70 @@ pip install pandas matplotlib seaborn numpy jupyter
 
 ### Next steps
 
-- Derive concrete detection rules/thresholds from the comparison data
+- ~~Derive concrete detection rules/thresholds from the comparison data~~ → Done in session 6
 - Consider what E2 (cover traffic — simultaneous training+inference) would do to multi-signal detection
 - Fix shelved workloads (E1, E2, E5, I4) if returning to RunPod
+- Write up findings for the verification proposal
+
+---
+
+## Session 6 — Threshold-Based Classifier (2026-04-01, local macOS)
+
+### What we built
+
+A simple, interpretable training detector: three physically-grounded threshold rules applied to 60-second windows of telemetry data. No ML, no fitting — just hard thresholds motivated by the signal analysis from session 5.
+
+**New files:**
+```
+classifier/
+  __init__.py
+  features.py      — window chunking (60s) + 3 feature computations
+  rules.py         — threshold rules + verdict logic
+  display.py       — rich HTML output for notebooks (banner + per-window table)
+notebooks/
+  classify.ipynb   — user-facing notebook (path input → classification → threshold sweep)
+```
+
+### The three rules
+
+A window is flagged as training if **any** rule triggers:
+
+| Rule | Threshold | Physical basis | Catches |
+|---|---|---|---|
+| `mean_power` | > 400W | Sustained high compute | T1, T2, T3, T5, E3 |
+| `tensor_sm_ratio` | > 0.25 | Matmul-dominated workload (tensor_active / sm_active) | T4, T6, E3 |
+| `power_std_temporal` | > 40W | Step-cycle oscillation (compute→comms→compute) | T4, T6, E4, E3 |
+
+### Validation: 11/11 correct (100%)
+
+- All 8 training/evasion conditions detected (0 false negatives)
+- All 3 inference/baseline conditions clean (0 false positives)
+- E4 (PCIe-only allreduce) is the hardest case — only caught by `power_std_temporal` (the step-cycle oscillation from slow PCIe comms)
+
+### Key design decisions
+
+- **No ML / no fitting**: thresholds set from physical understanding, not optimization. Avoids overfitting to 11 conditions.
+- **OR logic**: evasion must defeat ALL three rules simultaneously. From the data, no evasion does this.
+- **Per-window classification**: 60s windows give temporal resolution while being long enough to capture training step patterns. Each window gets an independent verdict with explanation of which rules triggered.
+- **Notebook as thin UI**: all logic in importable `classifier/` modules, notebook is ~5 cells (path input, run, results, validation, threshold sweep).
+- **Dropped cross-GPU power std** (originally considered): relies on allreduce timing stagger, which is an implementation artifact rather than a fundamental training property. The three chosen rules are grounded in physical invariants of distributed training.
+
+### Shelved for later
+
+- **Threshold sensitivity sweep**: included in the notebook but not yet run. Sweeps each threshold independently while holding others fixed, shows accuracy vs threshold value and the "safe range" where 100% accuracy holds.
+
+### Partial data cleanup
+
+Deleted `data/i4_telemetry.csv`, `data/e2_telemetry.csv`, `data/e5_telemetry.csv` — these were partial/debug runs from session 4. Need to be rerun:
+- E2: HF token propagation fix needed
+- E5: rerun with smaller model (T2's 136M config) to avoid NCCL timeout
+- I4: transformers meta tensor bug needs investigation
+
+### Next steps
+
+- Run the threshold sweep to verify margin on each rule
+- Rerun E2, E5 (smaller model), I4 when back on RunPod
+- Consider what E2 (cover traffic) would do to the classifier — simultaneous training+inference on split GPUs
 - Write up findings for the verification proposal
 
 ---

@@ -1,14 +1,12 @@
 ---
-name: Communication and collaboration preferences
-description: How Atharva likes to work — style, pacing, decision-making
+name: Communication and work style preferences
+description: How Atharva wants Claude to communicate and approach work in this project
 type: feedback
 ---
 
-- Asks lots of questions and wants to be consulted on design decisions — don't just build, ask first
-- Likes planning docs written to markdown files (not just chat) for later reference
-- Short, direct responses preferred — no filler
-- Wants explicit uncertainty flagged
-- Happy to defer low-stakes decisions ("use your default") but engages on consequential ones
-- Likes when suggestions come with reasoning, not just a recommendation
+Keep responses concise and informal. No need for trailing summaries — Atharva can read diffs.
 
-**Why:** He's building understanding, not just getting tasks done — the reasoning matters as much as the output.
+When something unexpected appears in data (outlier GPU, weird power signature, unexpected NVLink traffic), dig into it rather than glossing over it.
+
+**Why:** Atharva is exploring, not executing a fixed plan. Curiosity-driven investigation is more valuable than polished outputs.
+**How to apply:** Lead with findings, not process. Flag anomalies proactively. Use Jupyter-first approach when building analysis.

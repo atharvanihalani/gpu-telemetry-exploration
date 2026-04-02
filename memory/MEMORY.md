@@ -1,7 +1,4 @@
-# Memory Index
-
-- [user_atharva.md](user_atharva.md) — Atharva's background, role, and working style
-- [project_context.md](project_context.md) — TTP org goal, what this project is building toward
-- [feedback_style.md](feedback_style.md) — Communication and collaboration preferences
-- [project_hardware.md](project_hardware.md) — Switches between A100 and H100 nodes; scripts are hardware-agnostic
-- [feedback_agents.md](feedback_agents.md) — Prefers parallel worktree agents for independent implementation tasks
+- [Atharva — user profile](user_atharva.md) — building GPU-based training verification org, strong conceptual background, new to DCGM/pynvml
+- [Project status after session 7](project_status.md) — 13 conditions collected, 4-rule classifier (12/13), I3 false positive, E1/I4 shelved
+- [Hardware and environment](project_hardware.md) — RunPod A100/H100 pods, DCGM setup, HF_TOKEN requirement
+- [Communication style](feedback_style.md) — concise, informal, dig into anomalies, Jupyter-first

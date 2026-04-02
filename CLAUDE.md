@@ -609,6 +609,28 @@ cp memory/* /root/.claude/projects/-root-gpu-telemetry-exploration/memory/
 
 Run this before starting a session so context (project state, Atharva's preferences, etc.) is available.
 
+## Timestamp hook
+
+`.claude/settings.json` has a `UserPromptSubmit` hook that injects the current time into every conversational turn. Useful for correlating wall-clock time with workload runs. If settings.json is missing on a fresh node, create it with this exact structure (the `matcher` + `hooks` array nesting is required):
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "date '+Current time: %Y-%m-%d %H:%M:%S %Z'"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ---
 
 ## Atharva's context and preferences

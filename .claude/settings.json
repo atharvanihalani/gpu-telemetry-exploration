@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "date '+Current time: %Y-%m-%d %H:%M:%S %Z'"
+          }
+        ]
+      }
+    ]
+  }
+}

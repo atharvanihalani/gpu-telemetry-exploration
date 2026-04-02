@@ -14,8 +14,8 @@ becomes invisible — it looks like continuous background traffic.
 
 Environment variables set before NCCL init:
     NCCL_ALGO=Ring           — force ring algorithm (predictable, stretchable)
-    NCCL_BUFFSIZE=134217728  — 128MB buffer (default 4MB) = longer transfer window
-    NCCL_MAX_NCHANNELS=1     — single channel (default auto ~8-12) = lower peak rate
+    NCCL_BUFFSIZE=16777216   — 16MB buffer (default 4MB) = longer transfer window
+    NCCL_MAX_NCHANNELS=4     — 4 channels (default auto ~8-12) = lower peak rate
 
 Launch:
     torchrun --nproc_per_node=8 workloads/train_e5.py
@@ -42,8 +42,8 @@ import os
 #   Medium:     BUFFSIZE=128MB, MAX_NCHANNELS=2   (notably smoothed)
 #   Aggressive: BUFFSIZE=128MB, MAX_NCHANNELS=1   (maximum smoothing)
 NCCL_ALGO = "Ring"
-NCCL_BUFFSIZE = "134217728"   # 128MB (default is 4MB)
-NCCL_MAX_NCHANNELS = "4"      # 4 channels (default: auto ~8-12, was 1 but NCCL timed out)
+NCCL_BUFFSIZE = "33554432"    # 32MB (default is 4MB)
+NCCL_MAX_NCHANNELS = "2"      # 2 channels (default: auto ~8-12)
 
 os.environ["NCCL_ALGO"] = NCCL_ALGO
 os.environ["NCCL_BUFFSIZE"] = NCCL_BUFFSIZE

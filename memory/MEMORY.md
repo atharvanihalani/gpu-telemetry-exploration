@@ -2,3 +2,4 @@
 - [Project status after session 7](project_status.md) — 13 conditions collected, 4-rule classifier (12/13), I3 false positive, E1/I4 shelved
 - [Hardware and environment](project_hardware.md) — RunPod A100/H100 pods, DCGM setup, HF_TOKEN requirement
 - [Communication style](feedback_style.md) — concise, informal, dig into anomalies, Jupyter-first
+- [Multi-agent workflow](feedback_agents.md) — parallel worktree agents for independent tasks, review-then-merge

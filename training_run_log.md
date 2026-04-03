@@ -17,16 +17,16 @@ Collector: DCGM backend, 10Hz, 20 columns
 | E4 | 608s | 51K | 135 steps, PCIe-only allreduce |
 | I2 | ~300s | 38K | Llama-3.1-8B, 8 independent streams |
 | I3 | ~300s | 40K | Llama-3.1-8B, vLLM 0.18.1, 8-GPU TP, 11.5K tok/s |
+| E2 | ~300s | 24K | Cover traffic (train+infer split on 4+4 GPUs) |
+| E5 | ~300s | 55K | Smoothed allreduce (Ring, 32MB, 2ch) |
+| I4 | ~300s | 26K | Speculative decoding, Llama-3.2-1B draft + Llama-3.1-8B verifier, 8 independent procs |
 | B1 | ~300s | 26K | Llama-3.1-8B loaded, idle, 120W/0% SM |
 
 ## Shelved / Failed
 
 | Workload | Issue |
 |---|---|
-| E1 | RunPod blocks `nvmlDeviceSetPowerManagementLimit` — needs bare-metal |
-| E2 | HF token + DCGM duplicate key issues; needs careful subprocess env setup |
-| E5 | NCCL timeout even with 4 channels — 3.37B too large for Ring/128MB config |
-| I4 | transformers 4.57 meta tensor error when loading 2 models/GPU in threads |
+| E1 | Deprioritized — power capping is unrealistic evasion (kills throughput, extends wall-clock exposure). Also blocked on RunPod (needs `CAP_SYS_ADMIN`) |
 
 ## Errors (full details)
 

@@ -17,10 +17,10 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 | Category | Conditions | Status |
 |---|---|---|
 | Training | T1 (DDP 3.37B), T2 (DDP 136M), T3 (grad accum), T4 (pipeline), T5 (grad ckpt), T6 (FSDP) | All collected |
-| Inference | I2 (autoregressive), I3 (vLLM 8-GPU TP) | All collected |
+| Inference | I2 (autoregressive), I3 (vLLM 8-GPU TP), I4 (speculative decoding) | All collected |
 | Evasion | E2 (cover traffic), E3 (intermittent), E4 (PCIe-only), E5 (smoothed allreduce) | All collected |
 | Baseline | B1 (idle + model loaded) | Collected |
-| **Shelved** | E1 (power cap — RunPod blocks it), I4 (spec decoding — meta tensor bug) | Need fixes |
+| **Shelved** | E1 (power cap — deprioritized, unrealistic evasion) | Low priority |
 
 ### Classifier (4 rules, OR logic, 12/13 correct)
 

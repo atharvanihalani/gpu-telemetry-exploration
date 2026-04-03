@@ -7,7 +7,6 @@ from .rules import WindowVerdict
 RULE_DESCRIPTIONS = {
     "power": "Mean power > {t.power:.0f}W (sustained high compute)",
     "tensor_ratio": "Tensor/SM ratio > {t.tensor_ratio:.2f} (matmul-dominated workload)",
-    "power_std": "Power temporal std > {t.power_std:.0f}W (step-cycle oscillation)",
     "nvlink_autocorr": "NVLink autocorr peak > {t.nvlink_autocorr:.2f} (periodic allreduce heartbeat)",
 }
 
@@ -54,7 +53,6 @@ def _window_row_html(v: WindowVerdict) -> str:
         </td>
         <td style="padding:6px 12px; font-family:monospace; text-align:right;">{v.mean_power:.0f}W</td>
         <td style="padding:6px 12px; font-family:monospace; text-align:right;">{v.tensor_sm_ratio:.3f}</td>
-        <td style="padding:6px 12px; font-family:monospace; text-align:right;">{v.power_std_temporal:.1f}W</td>
         <td style="padding:6px 12px; font-family:monospace; text-align:right;">{v.nvlink_autocorr_peak:.3f}</td>
         <td style="padding:6px 12px; font-family:monospace; color:#666;">{rules_str}</td>
     </tr>
@@ -103,7 +101,6 @@ def show_results(verdicts: list[WindowVerdict], thresholds=None):
                 <th style="padding:6px 12px; text-align:center;">Verdict</th>
                 <th style="padding:6px 12px; text-align:right;">Power</th>
                 <th style="padding:6px 12px; text-align:right;">Tensor/SM</th>
-                <th style="padding:6px 12px; text-align:right;">Power Std</th>
                 <th style="padding:6px 12px; text-align:right;">NVLink AC</th>
                 <th style="padding:6px 12px;">Triggered</th>
             </tr>

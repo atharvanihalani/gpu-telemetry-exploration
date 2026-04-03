@@ -10,9 +10,9 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 
 ---
 
-## Current state (after session 7, 2026-04-02)
+## Current state (after session 8, 2026-04-03)
 
-### Data collected (13 conditions, H100 SXM5, DCGM 10Hz)
+### Data collected (14 conditions, H100 SXM5, DCGM 10Hz)
 
 | Category | Conditions | Status |
 |---|---|---|
@@ -22,17 +22,17 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 | Baseline | B1 (idle + model loaded) | Collected |
 | **Shelved** | E1 (power cap — deprioritized, unrealistic evasion) | Low priority |
 
-### Classifier (4 rules, OR logic, 12/13 correct)
+### Classifier (3 rules, OR logic, 12/14 correct)
 
 | Rule | Threshold | Physical basis |
 |---|---|---|
 | `mean_power` | > 400W | Sustained high compute |
 | `tensor_sm_ratio` | > 0.25 | Matmul-dominated workload (tensor_active / sm_active) |
-| `power_std_temporal` | > 40W | Step-cycle oscillation |
 | `nvlink_autocorr_peak` | > 0.3 | Periodic NVLink heartbeat (autocorrelation in 0.2-5s lag) |
 
 **Known issues:**
 - **I3 false positive**: vLLM tensor-parallel inference triggers nvlink_autocorr (0.699) — periodic activation exchanges look like allreduce. Needs compound rule (autocorr AND power).
+- **E4 miss**: PCIe-only allreduce kills NVLink signal, power stays moderate (~300W), tensor_ratio borderline. No current rule catches it.
 - **E2 near miss**: aggregate tensor_sm_ratio is 0.242 (threshold 0.25) — cover traffic nearly dodges it. Caught by power (408W) and nvlink_autocorr instead.
 
 ### Key insight
@@ -88,6 +88,7 @@ torchrun --nproc_per_node=8 workloads/train_t6.py   # T6 — FSDP + CPU offload
 # Inference
 python workloads/infer_i2.py                         # I2 — autoregressive [needs HF_TOKEN]
 python workloads/infer_i3.py                         # I3 — vLLM 8-GPU TP [needs HF_TOKEN]
+python workloads/infer_i4.py                         # I4 — speculative decoding [needs HF_TOKEN]
 
 # Evasion
 python workloads/run_e2.py                           # E2 — cover traffic (train+infer split)
@@ -119,8 +120,7 @@ NVLink fields 409-420 (A100, 12 links) or 409-426 (H100, 18 links) are cumulativ
 
 ## Next steps
 
-- Redo comparison notebook with all 13 conditions
-- Rethink classifier rules (compound rules, I3 false positive, E2 near miss)
+- Rethink classifier: compound rules for I3 false positive, possibly PCIe traffic rule for E4
 - Threshold sensitivity sweep
 - Write up findings for verification proposal
 

@@ -7,7 +7,6 @@ from .features import WindowFeatures
 # Default thresholds — physically motivated from H100 telemetry
 POWER_THRESHOLD = 400.0       # watts — sustained high power (catches T1, T2, T3, T5)
 TENSOR_RATIO_THRESHOLD = 0.25  # tensor_active / sm_active (catches T6, E3 on-periods)
-POWER_STD_THRESHOLD = 40.0     # watts — step-cycle oscillation (catches T4, T6, E4, E3)
 NVLINK_AUTOCORR_THRESHOLD = 0.3  # periodicity in NVLink TX (catches allreduce heartbeat)
 
 
@@ -20,7 +19,6 @@ class WindowVerdict:
     triggered_rules: list[str]
     mean_power: float
     tensor_sm_ratio: float
-    power_std_temporal: float
     nvlink_autocorr_peak: float
 
 
@@ -28,7 +26,6 @@ class WindowVerdict:
 class Thresholds:
     power: float = POWER_THRESHOLD
     tensor_ratio: float = TENSOR_RATIO_THRESHOLD
-    power_std: float = POWER_STD_THRESHOLD
     nvlink_autocorr: float = NVLINK_AUTOCORR_THRESHOLD
 
 
@@ -42,8 +39,6 @@ def classify_window(
         triggered.append("power")
     if feat.tensor_sm_ratio > thresholds.tensor_ratio:
         triggered.append("tensor_ratio")
-    if feat.power_std_temporal > thresholds.power_std:
-        triggered.append("power_std")
     if feat.nvlink_autocorr_peak > thresholds.nvlink_autocorr:
         triggered.append("nvlink_autocorr")
 
@@ -55,7 +50,6 @@ def classify_window(
         triggered_rules=triggered,
         mean_power=feat.mean_power,
         tensor_sm_ratio=feat.tensor_sm_ratio,
-        power_std_temporal=feat.power_std_temporal,
         nvlink_autocorr_peak=feat.nvlink_autocorr_peak,
     )
 

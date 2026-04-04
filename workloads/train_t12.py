@@ -113,6 +113,10 @@ class MoELayer(nn.Module):
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
 
         # --- Count tokens per expert (for all-to-all sizing) ---
+        # Ensure consistent dtype for all-to-all (autocast doesn't cover comms)
+        comm_dtype = torch.bfloat16
+        x_flat = x_flat.to(comm_dtype)
+
         # Each token sends top_k copies to different experts
         tokens_expanded = x_flat.unsqueeze(1).expand(-1, self.top_k, -1)  # (N, top_k, D)
         tokens_expanded = tokens_expanded.reshape(N * self.top_k, D)
@@ -137,7 +141,7 @@ class MoELayer(nn.Module):
         recv_splits = recv_counts.tolist()
 
         recv_total = int(recv_counts.sum())
-        recv_buf = torch.empty(recv_total, D, dtype=x_flat.dtype, device=x.device)
+        recv_buf = torch.empty(recv_total, D, dtype=comm_dtype, device=x.device)
         dist.all_to_all_single(
             recv_buf, tokens_sorted,
             output_split_sizes=recv_splits,
@@ -152,7 +156,7 @@ class MoELayer(nn.Module):
             expert_out = recv_buf
 
         # --- All-to-all: gather results back ---
-        send_back_buf = torch.empty(N * self.top_k, D, dtype=x_flat.dtype, device=x.device)
+        send_back_buf = torch.empty(N * self.top_k, D, dtype=comm_dtype, device=x.device)
         dist.all_to_all_single(
             send_back_buf, expert_out,
             output_split_sizes=send_splits,

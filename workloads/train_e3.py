@@ -155,7 +155,7 @@ def main():
         print(f"Duty cycle: {TRAIN_WINDOW_S}s train / {SLEEP_WINDOW_S}s sleep "
               f"= {duty_pct:.0f}%")
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

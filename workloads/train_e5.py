@@ -14,8 +14,8 @@ becomes invisible — it looks like continuous background traffic.
 
 Environment variables set before NCCL init:
     NCCL_ALGO=Ring           — force ring algorithm (predictable, stretchable)
-    NCCL_BUFFSIZE=16777216   — 16MB buffer (default 4MB) = longer transfer window
-    NCCL_MAX_NCHANNELS=4     — 4 channels (default auto ~8-12) = lower peak rate
+    NCCL_BUFFSIZE=33554432   — 32MB buffer (default 4MB) = longer transfer window
+    NCCL_MAX_NCHANNELS=2     — 2 channels (default auto ~8-12) = lower peak rate
 
 Launch:
     torchrun --nproc_per_node=8 workloads/train_e5.py
@@ -117,7 +117,7 @@ def main():
         print("Compare with T1 NVLink heatmap to see smoothing effect.")
         print()
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

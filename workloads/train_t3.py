@@ -157,7 +157,7 @@ def main():
         print(f"Effective batch/GPU = {BATCH_SIZE * ACCUM_STEPS} "
               f"({BATCH_SIZE} × {ACCUM_STEPS} accum steps)")
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

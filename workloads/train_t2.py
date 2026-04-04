@@ -19,7 +19,7 @@ Everything else is identical to T1:
     - Synthetic random-token data
     - bf16 AMP, AdamW optimizer
     - 5 min total (30s warmup, ~270s steady, 5s cooldown)
-    - 1 Hz pynvml telemetry via shared collector
+    - 10 Hz DCGM telemetry via shared collector
 
 Expected telemetry vs T1:
     - Power: significantly lower (~150-250W vs ~400W) — not fully saturating GPU
@@ -156,7 +156,7 @@ def main():
               f"n_layers={N_LAYERS}, n_heads={N_HEADS}")
         print(f"[T2] Sequence length={SEQ_LEN}, batch/GPU={BATCH_SIZE}")
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

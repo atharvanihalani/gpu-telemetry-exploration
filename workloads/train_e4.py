@@ -100,7 +100,7 @@ def main():
         print("PCIe bandwidth bottleneck for allreduce. This is expected.")
         print()
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

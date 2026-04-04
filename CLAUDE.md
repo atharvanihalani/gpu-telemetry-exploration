@@ -123,6 +123,7 @@ NVLink fields 409-420 (A100, 12 links) or 409-426 (H100, 18 links) are cumulativ
 - Rethink classifier: compound rules for I3 false positive, possibly PCIe traffic rule for E4
 - Threshold sensitivity sweep
 - Write up findings for verification proposal
+- Minor: T2 is missing the `TELEMETRY_DISABLED` env var check that T1 has (would matter if T2 is ever used in an orchestrator like E2)
 
 ---
 

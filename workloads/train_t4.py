@@ -193,7 +193,7 @@ def main():
         print(f"Sequence length={SEQ_LEN}, batch={BATCH_SIZE}, "
               f"microbatches={N_MICROBATCHES}")
 
-    # --- Telemetry (rank 0 only, sees all GPUs via pynvml) ---
+    # --- Telemetry (rank 0 only, sees all GPUs via DCGM) ---
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

@@ -162,7 +162,7 @@ def main():
         print(f"DDP world_size={world_size}")
         print(f"Sequence length={SEQ_LEN}, batch/GPU={BATCH_SIZE}")
 
-    # Telemetry — only rank 0 collects (pynvml sees all GPUs)
+    # Telemetry — only rank 0 collects (DCGM sees all GPUs)
     collector = None
     if is_rank0:
         collector = TelemetryCollector(OUTPUT_CSV)

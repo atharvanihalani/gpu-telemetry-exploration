@@ -104,3 +104,29 @@ Collected E2 and E5 (13 conditions total). Added 4th classifier rule: NVLink aut
 ### 4th Rule — NVLink Autocorrelation
 - `nvlink_autocorr_peak > 0.3`: max autocorrelation of NVLink TX in 0.2-5s lag range, across GPUs
 - **12/13 correct. I3 false positive** — tensor-parallel inference has periodic NVLink from per-layer activation exchanges (autocorr 0.699). Fix: compound rule (autocorr AND power), deferred.
+
+---
+
+## Session 8 — I4 Collection + Classifier Cleanup (2026-04-03, H100 RunPod)
+
+Collected I4 (speculative decoding), deprioritized E1, removed `power_std` rule, redid comparison notebook with all 14 conditions.
+
+### I4 — Speculative Decoding (fixed and collected)
+- Previous attempts failed: cross-tokenizer drafts (Qwen) hit RoPE mismatch in transformers UAD path, threading deadlocked in HF assisted generation.
+- **Fix:** swapped draft to Llama-3.2-1B (same tokenizer family, avoids UAD entirely), rewrote from threading to multiprocessing.
+- **Data:** 25K rows, 207W mean power, 24% SM util, zero NVLink — clean inference signature. No false positive risk.
+
+### E1 — Deprioritized
+- Power capping is unrealistic evasion: kills throughput, extends wall-clock exposure (defeats the purpose of secret training).
+- Also blocked on RunPod (needs `CAP_SYS_ADMIN` for `nvmlDeviceSetPowerManagementLimit`).
+- Moved plan to `plans/shelved/`.
+
+### Classifier cleanup (4→3 rules)
+- Removed `power_std_temporal > 40W`: unprincipled metric that won't generalize beyond toy workloads.
+- **3 rules remain:** `mean_power > 400W`, `tensor_sm_ratio > 0.25`, `nvlink_autocorr_peak > 0.3`.
+- **12/14 correct.** I3 false positive (nvlink_autocorr from TP activation exchanges). E4 honest miss (PCIe-only allreduce dodges all 3 rules, but imposes ~10x throughput penalty).
+
+### Comparison notebook redone
+- All 14 conditions in updated `notebooks/comparison.ipynb`, all 12 plots in `plots/` regenerated.
+
+**Files:** `workloads/infer_i4.py` (rewritten), `data/i4_telemetry.csv`, `classifier/rules.py` (power_std removed), `notebooks/comparison.ipynb`, `notebooks/classify.ipynb`

@@ -6,10 +6,14 @@
 - [ ] Threshold sensitivity sweep
 
 ## Multi-node (session 9)
-- [ ] 16-GPU DDP (T1-16) — allreduce over NVLink + InfiniBand
-- [ ] Multi-node pipeline parallelism
-- [ ] Multi-node FSDP
+- [x] T10 script — 16-GPU DDP across 2 nodes
+- [x] IB telemetry collector (`collect_ib.py`) — 10Hz sysfs counters
+- [x] BMC telemetry collector (`collect_bmc.py`) — 2s IPMI sensors
+- [ ] Run T10 and collect data
+- [ ] Multi-node pipeline parallelism (T11?)
+- [ ] Multi-node FSDP (T12?)
 - [ ] Multi-node evasion conditions (TBD)
+- [ ] Consistency check analysis: DCGM power vs BMC SYS_POWER, DCGM temp vs BMC GPU_PROC
 
 ## Write-up
 - [ ] Findings summary for verification proposal

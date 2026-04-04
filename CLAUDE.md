@@ -10,9 +10,11 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 
 ---
 
-## Current state (after session 8, 2026-04-03)
+## Current state (session 9 in progress, 2026-04-04)
 
-### Data collected (14 conditions, H100 SXM5, DCGM 10Hz)
+### Data collected
+
+**Single-node (14 conditions, H100 SXM5, DCGM 10Hz):**
 
 | Category | Conditions | Status |
 |---|---|---|
@@ -21,6 +23,12 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 | Evasion | E2 (cover traffic), E3 (intermittent), E4 (PCIe-only), E5 (smoothed allreduce) | All collected |
 | Baseline | B1 (idle + model loaded) | Collected |
 | **Shelved** | E1 (power cap — deprioritized, unrealistic evasion) | Low priority |
+
+**Multi-node (T10+, 2x H100 nodes, 16 GPUs, naming: t10/i10/e10/b10+):**
+
+| Category | Conditions | Status |
+|---|---|---|
+| Training | T10 (16-GPU DDP, 2 nodes) | Script ready, not yet run |
 
 ### Classifier (3 rules, OR logic, 12/14 correct)
 
@@ -99,6 +107,16 @@ torchrun --nproc_per_node=8 workloads/train_e5.py   # E5 — smoothed allreduce 
 
 # Baseline
 python workloads/baseline_b1.py                      # B1 — idle + model loaded [needs HF_TOKEN]
+
+# Multi-node (run on BOTH nodes within ~60s of each other)
+# Node 0:
+torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 \
+  --master_addr=192.168.242.186 --master_port=29500 \
+  workloads/train_t10.py
+# Node 1:
+torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 \
+  --master_addr=192.168.242.186 --master_port=29500 \
+  workloads/train_t10.py
 ```
 
 ---
@@ -113,7 +131,19 @@ NVLink fields 409-420 (A100, 12 links) or 409-426 (H100, 18 links) are cumulativ
 
 ---
 
-## Telemetry CSV schema (20 columns)
+## Telemetry collectors
+
+Three independent collectors, synced by timestamp:
+
+| Collector | Rate | Source | Columns | Trust domain |
+|---|---|---|---|---|
+| `collect_telemetry.py` | 10Hz | DCGM (GPU firmware) | 20: power, temp, SM/tensor/DRAM activity, NVLink, PCIe, etc. | GPU driver |
+| `collect_ib.py` | 10Hz | sysfs (ConnectX firmware) | 36: per-port IB tx/rx bytes+packets, totals | Kernel RDMA |
+| `collect_bmc.py` | 2s | IPMI (baseboard controller) | 11: sys_power_w, gpu0-7_bmc_temp_c | Hardware/PSU |
+
+Multi-node workloads (T10+) start all three on each node. Single-node workloads use only the DCGM collector (unchanged).
+
+### DCGM CSV schema (20 columns)
 
 `timestamp, phase, gpu, gpu_model, power_w, temp_c, mem_used_mib, mem_total_mib, gpu_util_pct, mem_util_pct, sm_active, tensor_active, dram_active, fp16_active, pcie_tx_bytes_s, pcie_rx_bytes_s, nvlink_tx_bytes_s, nvlink_rx_bytes_s, throttle_reasons, energy_mj`
 

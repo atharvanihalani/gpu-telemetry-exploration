@@ -318,7 +318,10 @@ def main():
         local_params = sum(p.numel() for p in model.parameters())
         print(f"  Parameters (post-shard, per GPU): {local_params / 1e6:.0f}M")
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
+    # foreach=False avoids mixed DTensor/Tensor error in _foreach ops.
+    # TP shards some params (DTensor) but embeddings/LN stay as plain Tensors.
+    # (T11 doesn't hit this because replicate() converts all params to DTensor.)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, foreach=False)
     loss_fn   = nn.CrossEntropyLoss()
 
     # Activation shape for inter-stage transfers: (MICRO_BATCH, SEQ_LEN, D_MODEL)

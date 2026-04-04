@@ -18,6 +18,9 @@
 ## Write-up
 - [ ] Findings summary for verification proposal
 
+## Known issues
+- `dist.destroy_process_group()` hangs with composable TP+DP (`replicate` + `parallelize_module`). Workaround: `os._exit(0)` after flushing collectors. Affects T11+. Root cause: straggling NCCL collectives during cleanup.
+
 ## Minor / cleanup
 - [ ] T2 missing `TELEMETRY_DISABLED` env var check (T1 has it, matters if T2 is used in an orchestrator like E2)
 - [ ] `classify.ipynb` sweep section references `Thresholds().power_std` — removed in session 8, will throw `AttributeError`

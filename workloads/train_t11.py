@@ -317,7 +317,11 @@ def main():
     if is_rank0:
         print(f"Done. {step} steps in {time.time() - t_start:.1f}s")
 
-    dist.destroy_process_group()
+    # destroy_process_group hangs with composable TP+DP (replicate +
+    # parallelize_module) due to straggling NCCL collectives during
+    # cleanup. Data is already flushed, so just exit.
+    import os as _os
+    _os.exit(0)
 
 
 if __name__ == "__main__":

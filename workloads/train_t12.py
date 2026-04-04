@@ -137,7 +137,7 @@ class MoELayer(nn.Module):
         recv_splits = recv_counts.tolist()
 
         recv_total = int(recv_counts.sum())
-        recv_buf = torch.empty(recv_total, D, dtype=tokens_sorted.dtype, device=x.device)
+        recv_buf = torch.empty(recv_total, D, dtype=x_flat.dtype, device=x.device)
         dist.all_to_all_single(
             recv_buf, tokens_sorted,
             output_split_sizes=recv_splits,
@@ -152,7 +152,7 @@ class MoELayer(nn.Module):
             expert_out = recv_buf
 
         # --- All-to-all: gather results back ---
-        send_back_buf = torch.empty(N * self.top_k, D, dtype=x.dtype, device=x.device)
+        send_back_buf = torch.empty(N * self.top_k, D, dtype=x_flat.dtype, device=x.device)
         dist.all_to_all_single(
             send_back_buf, expert_out,
             output_split_sizes=send_splits,

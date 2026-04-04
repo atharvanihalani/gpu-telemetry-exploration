@@ -110,11 +110,11 @@ LR             = 3e-4
 ```bash
 # Node 0:
 torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 \
-  --master_addr=192.168.242.186 --master_port=29500 \
+  --master_addr=192.168.241.135 --master_port=29500 \
   workloads/train_t13.py
 
 # Node 1:
 torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 \
-  --master_addr=192.168.242.186 --master_port=29500 \
+  --master_addr=192.168.241.135 --master_port=29500 \
   workloads/train_t13.py
 ```

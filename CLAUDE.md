@@ -67,7 +67,7 @@ Current cluster: 2x H100 SXM5 nodes (Hyperbolic), 8 GPUs each, 16 total. Connect
 | Max SM clock | ~1980 MHz |
 | InfiniBand | 8x ConnectX-7 NDR 400G (inter-node) |
 | BMC sensors | SYS_POWER, GPU0-7_PROC temps |
-| Node IPs | Node 0: 192.168.242.186, Node 1: 192.168.240.15 |
+| Node IPs | Node 0: 192.168.241.135 (pub 85.234.79.40), Node 1: 192.168.241.174 (pub 85.234.79.179) |
 
 **Idle baseline:** ~69-73W, ~0% SM, ~0 NVLink. BMC SYS_POWER ~2100W idle.
 
@@ -125,11 +125,11 @@ python workloads/baseline_b1.py                      # B1 — idle + model loade
 # Replace train_t10.py with train_t11.py or train_t12.py as needed
 # Node 0:
 torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 \
-  --master_addr=192.168.242.186 --master_port=29500 \
+  --master_addr=192.168.241.135 --master_port=29500 \
   workloads/train_t10.py
 # Node 1:
 torchrun --nproc_per_node=8 --nnodes=2 --node_rank=1 \
-  --master_addr=192.168.242.186 --master_port=29500 \
+  --master_addr=192.168.241.135 --master_port=29500 \
   workloads/train_t10.py
 ```
 

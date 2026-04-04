@@ -130,3 +130,49 @@ Collected I4 (speculative decoding), deprioritized E1, removed `power_std` rule,
 - All 14 conditions in updated `notebooks/comparison.ipynb`, all 12 plots in `plots/` regenerated.
 
 **Files:** `workloads/infer_i4.py` (rewritten), `data/i4_telemetry.csv`, `classifier/rules.py` (power_std removed), `notebooks/comparison.ipynb`, `notebooks/classify.ipynb`
+
+---
+
+## Session 9 — Multi-Node + New Telemetry Sources (2026-04-04, Hyperbolic 2x H100)
+
+First multi-node session. Moved from RunPod to Hyperbolic bare-metal cluster: 2x H100 SXM5 nodes, 8 GPUs each, 8x NDR 400G InfiniBand, BlueField-2 DPU, BMC accessible.
+
+### New infrastructure
+- **IB telemetry collector** (`collect_ib.py`): 10Hz sysfs counters from ConnectX-7 firmware. 8 ports, tx/rx bytes+packets. Independent of GPU driver — separate trust domain.
+- **BMC telemetry collector** (`collect_bmc.py`): 2s IPMI polling. SYS_POWER (whole-node watts from PSU), per-GPU temps via I2C. Hardware-level, unfakeable from userspace.
+- Three collectors run independently per node, synced by timestamp.
+
+### T10 — 16-GPU DDP (collected)
+- Pure data parallelism across 2 nodes. Same 3.37B GPT as T1.
+- **Results:** 687W mean power (same as single-node T1), 18 GB/s NVLink TX (intra-node allreduce), 15.7 GB/s IB TX (inter-node allreduce). 689 steps in 306s.
+- **BMC consistency check:** SYS_POWER 8092W matches 687W×8 GPUs + overhead. GPU temps match DCGM.
+- Classifier rules all trigger — pure DP is easily detectable regardless of node count.
+
+### T11 — TP+DP Hybrid (collected)
+- 8-way tensor parallelism within each node, 2-way DP across nodes. Realistic frontier configuration.
+- Used PyTorch native `parallelize_module` + `DeviceMesh` + composable `replicate`.
+- **Results:** 508W power, 0.15 tensor_active, 0.53 SM, **56.6 GB/s NVLink TX** (3x T10 — continuous TP all-reduces every layer). 1730 steps in 299s (~6 steps/s vs T10's ~2.3).
+- **Key finding:** NVLink traffic is CONTINUOUS (no periodic heartbeat). `nvlink_autocorr` rule would fail. But power (508W > 400W) and tensor_ratio still catch it.
+- **Bug:** `destroy_process_group()` hangs with composable TP+DP. Workaround: `os._exit(0)` after collectors flush.
+- **Bug:** T1's attention forward hardcodes global n_heads in reshape — fails after ColwiseParallel shards QKV. Fixed by inferring local head count from actual output size.
+
+### T12 — MoE EP+DP (in progress)
+- Mixtral-style sparse MoE: 8 experts per layer, top-2 routing, every other block. EP within node (all-to-all over NVLink), DP across nodes.
+- Custom MoE layer using `torch.distributed.all_to_all_single`.
+- **Bugs fixed:** dtype mismatch in all-to-all buffers (autocast doesn't cover comms), DDP `find_unused_parameters=True` needed (each GPU only runs its local expert).
+
+### Repo cleanup (start of session)
+- Added session 8 to SESSION_LOG.md
+- Fixed stale "pynvml" comments in 8 workload scripts → "DCGM"
+- Deleted old notebooks, vestigial config/settings.local.json
+- Created `docs/` directory, `docs/TODO.md`
+- Updated memory files for session 8
+
+### Out-of-band telemetry sources discovered
+- **BMC/IPMI:** `/dev/ipmi0` accessible. SYS_POWER, GPU temps, fan RPMs, CPU temps.
+- **IB sysfs:** `/sys/class/infiniband/mlx5_ibN/ports/1/counters/` — cumulative byte/packet counters, 16ms for all 8 ports.
+- **NVLink SMBPBI:** `nvidia-smi nvlink -s` works (18 links per GPU at 26.562 GB/s each).
+- **BlueField-2 DPU:** Present at PCIe 51:00.1 but limited access (storage management interface).
+- **ToR switch:** Not accessible from host.
+
+**Files:** `workloads/train_t10.py`, `train_t11.py`, `train_t12.py`, `collect_ib.py`, `collect_bmc.py`, `docs/workload_variants_reference.md`

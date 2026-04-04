@@ -28,7 +28,9 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 
 | Category | Conditions | Status |
 |---|---|---|
-| Training | T10 (16-GPU DDP, 2 nodes) | Script ready, not yet run |
+| Training | T10 (16-GPU DDP) | Collected |
+| Training | T11 (TP+DP: 8-way TP within node, 2-way DP across) | Collected |
+| Training | T12 (MoE EP+DP: 8 experts, top-2, EP within node) | In progress |
 
 ### Classifier (3 rules, OR logic, 12/14 correct)
 
@@ -43,24 +45,33 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 - **E4 miss**: PCIe-only allreduce kills NVLink signal, power stays moderate (~300W), tensor_ratio borderline. No current rule catches it.
 - **E2 near miss**: aggregate tensor_sm_ratio is 0.242 (threshold 0.25) — cover traffic nearly dodges it. Caught by power (408W) and nvlink_autocorr instead.
 
-### Key insight
+### Key insights
 
-Every evasion breaks ONE signal but leaves others intact. Multi-signal OR-logic detection is robust — no evasion defeats all rules simultaneously.
+1. Every evasion breaks ONE signal but leaves others intact. Multi-signal OR-logic detection is robust — no evasion defeats all rules simultaneously.
+2. Multi-node results (session 9): different parallelism strategies produce dramatically different NVLink signatures:
+   - **T10 (pure DP)**: periodic NVLink bursts (18 GB/s), classifier catches easily
+   - **T11 (TP+DP)**: continuous NVLink (56 GB/s), NO periodicity — `nvlink_autocorr` rule fails. Power (508W) and IB traffic still detectable.
+   - **T12 (MoE EP+DP)**: data-dependent, variable NVLink from all-to-all token shuffles (TBD)
+3. Consistency checks work: BMC SYS_POWER (8092W) matches DCGM per-GPU power × 8 + overhead. BMC GPU temps match DCGM temps.
 
 ---
 
 ## Hardware specs
 
-Current cluster: 2x H100 SXM5 nodes (Hyperbolic), 8 GPUs each, 16 total. Connected via 8x NDR 400G InfiniBand.
+Current cluster: 2x H100 SXM5 nodes (Hyperbolic), 8 GPUs each, 16 total. Connected via 8x NDR 400G InfiniBand. BlueField-2 DPU present (storage management). BMC accessible via ipmitool.
 
 | Item | H100 SXM5 |
 |---|---|
 | NVLink | 4.0, 18 ports, 900 GB/s |
 | GPU TDP | ~700W |
 | Max SM clock | ~1980 MHz |
-| InfiniBand | 8x NDR 400G (inter-node) |
+| InfiniBand | 8x ConnectX-7 NDR 400G (inter-node) |
+| BMC sensors | SYS_POWER, GPU0-7_PROC temps |
+| Node IPs | Node 0: 192.168.242.186, Node 1: 192.168.240.15 |
 
-**Idle baseline:** ~69-73W, ~0% SM, ~0 NVLink.
+**Idle baseline:** ~69-73W, ~0% SM, ~0 NVLink. BMC SYS_POWER ~2100W idle.
+
+Previous cluster (sessions 1-8): RunPod A100/H100 single-node pods.
 
 ---
 
@@ -80,9 +91,11 @@ Current cluster: 2x H100 SXM5 nodes (Hyperbolic), 8 GPUs each, 16 total. Connect
 ## Running workloads
 
 ```bash
-# Fresh node setup
-apt-get update -q && apt-get install -y datacenter-gpu-manager
-nv-hostengine
+# Fresh node setup (Ubuntu 24.04 — needs venv)
+sudo apt-get update -q && sudo apt-get install -y datacenter-gpu-manager python3.12-venv ipmitool
+sudo nv-hostengine
+python3 -m venv ~/venv && source ~/venv/bin/activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 pip install nvidia-ml-py3 pandas matplotlib seaborn transformers accelerate huggingface_hub
 export HF_TOKEN=<token>  # or add to .env
 
@@ -109,6 +122,7 @@ torchrun --nproc_per_node=8 workloads/train_e5.py   # E5 — smoothed allreduce 
 python workloads/baseline_b1.py                      # B1 — idle + model loaded [needs HF_TOKEN]
 
 # Multi-node (run on BOTH nodes within ~60s of each other)
+# Replace train_t10.py with train_t11.py or train_t12.py as needed
 # Node 0:
 torchrun --nproc_per_node=8 --nnodes=2 --node_rank=0 \
   --master_addr=192.168.242.186 --master_port=29500 \

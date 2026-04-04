@@ -1,5 +1,5 @@
 - [Atharva — user profile](user_atharva.md) — building GPU-based training verification org, strong conceptual background, new to DCGM/pynvml
-- [Project status after session 8](project_status.md) — 14 conditions collected, 3-rule classifier (12/14), I3 false positive, E4 miss
+- [Project status after session 9](project_status.md) — multi-node T10/T11/T12, IB+BMC collectors, nvlink_autocorr fails on TP
 - [Hardware and environment](project_hardware.md) — RunPod A100/H100 pods, DCGM setup, HF_TOKEN requirement
 - [Communication style](feedback_style.md) — concise, informal, dig into anomalies, Jupyter-first
 - [Multi-agent workflow](feedback_agents.md) — parallel worktree agents for independent tasks, review-then-merge

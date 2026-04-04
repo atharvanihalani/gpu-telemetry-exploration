@@ -16,6 +16,7 @@
 - [x] Consistency checks validated (BMC power/temps match DCGM)
 - [ ] T12 — MoE EP+DP (in progress)
 - [ ] Multi-node evasion conditions (TBD)
+- [ ] EP across nodes (all-to-all over IB instead of NVLink) — needs more nodes/experts to be realistic
 - [ ] Merge node 1 data (CSVs need to be copied from node 2)
 
 ## Analysis

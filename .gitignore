@@ -4,3 +4,4 @@ __pycache__/
 .ipynb_checkpoints/
 .env
 .claude/settings.local.json
+ss/

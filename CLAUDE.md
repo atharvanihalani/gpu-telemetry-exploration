@@ -6,7 +6,7 @@ Atharva is building a trusted third-party org to verify that frontier AI labs ha
 
 This is **open-ended exploration** — collecting raw GPU telemetry under controlled workloads to understand what signals distinguish training from inference, and how robust detection is under adversarial evasion.
 
-**Detailed session-by-session history:** see `SESSION_LOG.md`
+**Detailed session-by-session history:** see `docs/SESSION_LOG.md`
 
 ---
 
@@ -43,15 +43,16 @@ Every evasion breaks ONE signal but leaves others intact. Multi-signal OR-logic 
 
 ## Hardware specs
 
-We flip between A100 and H100 nodes. Both are 8-GPU, 80GB, all-to-all NVSwitch.
+Current cluster: 2x H100 SXM5 nodes (Hyperbolic), 8 GPUs each, 16 total. Connected via 8x NDR 400G InfiniBand.
 
-| Item | A100 SXM4 | H100 SXM5 |
-|---|---|---|
-| NVLink | 3.0, 12 ports, 600 GB/s | 4.0, 18 ports, 900 GB/s |
-| GPU TDP | ~400W | ~700W |
-| Max SM clock | ~1410 MHz | ~1980 MHz |
+| Item | H100 SXM5 |
+|---|---|
+| NVLink | 4.0, 18 ports, 900 GB/s |
+| GPU TDP | ~700W |
+| Max SM clock | ~1980 MHz |
+| InfiniBand | 8x NDR 400G (inter-node) |
 
-**Idle baseline:** ~60-80W, ~0% SM, ~0 NVLink. See `hardware_notes.md` for full comparison.
+**Idle baseline:** ~69-73W, ~0% SM, ~0 NVLink.
 
 ---
 
@@ -120,10 +121,7 @@ NVLink fields 409-420 (A100, 12 links) or 409-426 (H100, 18 links) are cumulativ
 
 ## Next steps
 
-- Rethink classifier: compound rules for I3 false positive, possibly PCIe traffic rule for E4
-- Threshold sensitivity sweep
-- Write up findings for verification proposal
-- Minor: T2 is missing the `TELEMETRY_DISABLED` env var check that T1 has (would matter if T2 is ever used in an orchestrator like E2)
+See `docs/TODO.md` for open items.
 
 ---
 
@@ -136,7 +134,7 @@ cp memory/* /root/.claude/projects/-root-gpu-telemetry-exploration/memory/
 
 ## Timestamp hook
 
-`.claude/settings.json` has a `UserPromptSubmit` hook injecting current time. See `SESSION_LOG.md` session 7 for the JSON structure.
+`.claude/settings.json` has a `UserPromptSubmit` hook injecting current time. See `docs/SESSION_LOG.md` session 7 for the JSON structure.
 
 ---
 

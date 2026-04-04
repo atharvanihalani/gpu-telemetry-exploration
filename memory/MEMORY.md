@@ -1,5 +1,7 @@
 - [Atharva — user profile](user_atharva.md) — building GPU-based training verification org, strong conceptual background, new to DCGM/pynvml
-- [Project status after session 9](project_status.md) — multi-node T10/T11/T12, IB+BMC collectors, nvlink_autocorr fails on TP
+- [Project status after session 10](project_status.md) — T13-T15 collected, PP hardest to detect, plans in plans/ folder
 - [Hardware and environment](project_hardware.md) — RunPod A100/H100 pods, DCGM setup, HF_TOKEN requirement
 - [Communication style](feedback_style.md) — concise, informal, dig into anomalies, Jupyter-first
 - [Multi-agent workflow](feedback_agents.md) — parallel worktree agents for independent tasks, review-then-merge
+- [Workload dev workflow](feedback_workflow.md) — chat→agent plans→review→agent implements→review. Overlap aggressively.
+- [Shelved variants](project_shelved_variants.md) — DiLoCo, large grad accum, exotic TP configs — revisit later

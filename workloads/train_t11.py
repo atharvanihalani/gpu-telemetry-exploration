@@ -53,9 +53,8 @@ from workloads.collect_telemetry import TelemetryCollector
 from workloads.collect_ib import IBCollector
 from workloads.collect_bmc import BMCCollector
 
-# Import model architecture from T1
+# Import config from T1 (but NOT the model — we need a TP-aware version)
 from workloads.train_t1 import (
-    GPT,
     D_MODEL,
     N_LAYERS,
     N_HEADS,
@@ -66,6 +65,79 @@ from workloads.train_t1 import (
     LR,
     WARMUP_S,
 )
+
+
+# ---------------------------------------------------------------------------
+# TP-aware model (forward uses local head count after sharding)
+# ---------------------------------------------------------------------------
+
+class CausalSelfAttention(nn.Module):
+    """Attention with TP-safe forward: infers head count from sharded QKV output."""
+
+    def __init__(self, d_model, n_heads):
+        super().__init__()
+        assert d_model % n_heads == 0
+        self.n_heads = n_heads
+        self.head_dim = d_model // n_heads
+        self.qkv = nn.Linear(d_model, 3 * d_model, bias=False)
+        self.proj = nn.Linear(d_model, d_model, bias=False)
+
+    def forward(self, x):
+        B, T, _ = x.shape
+        qkv_out = self.qkv(x)
+        # After ColwiseParallel, output dim is 3*d_model/tp_size.
+        # Infer local head count from actual output size.
+        local_qkv_dim = qkv_out.shape[-1]
+        local_heads = local_qkv_dim // (3 * self.head_dim)
+        qkv = qkv_out.reshape(B, T, 3, local_heads, self.head_dim)
+        q, k, v = qkv.unbind(2)
+        q = q.transpose(1, 2)
+        k = k.transpose(1, 2)
+        v = v.transpose(1, 2)
+        y = torch.nn.functional.scaled_dot_product_attention(
+            q, k, v, is_causal=True
+        )
+        y = y.transpose(1, 2).reshape(B, T, local_heads * self.head_dim)
+        return self.proj(y)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, n_heads, ffn_mult):
+        super().__init__()
+        self.ln1 = nn.LayerNorm(d_model)
+        self.attn = CausalSelfAttention(d_model, n_heads)
+        self.ln2 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, ffn_mult * d_model, bias=False),
+            nn.GELU(),
+            nn.Linear(ffn_mult * d_model, d_model, bias=False),
+        )
+
+    def forward(self, x):
+        x = x + self.attn(self.ln1(x))
+        x = x + self.ffn(self.ln2(x))
+        return x
+
+
+class GPT(nn.Module):
+    def __init__(self, vocab_size, d_model, n_layers, n_heads, ffn_mult, seq_len):
+        super().__init__()
+        self.tok_emb = nn.Embedding(vocab_size, d_model)
+        self.pos_emb = nn.Embedding(seq_len, d_model)
+        self.blocks = nn.ModuleList([
+            TransformerBlock(d_model, n_heads, ffn_mult) for _ in range(n_layers)
+        ])
+        self.ln_f = nn.LayerNorm(d_model)
+        self.head = nn.Linear(d_model, vocab_size, bias=False)
+
+    def forward(self, idx):
+        B, T = idx.shape
+        pos = torch.arange(T, device=idx.device).unsqueeze(0)
+        x = self.tok_emb(idx) + self.pos_emb(pos)
+        for block in self.blocks:
+            x = block(x)
+        x = self.ln_f(x)
+        return self.head(x)
 
 # ---------------------------------------------------------------------------
 # T11-specific config

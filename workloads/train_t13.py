@@ -483,7 +483,7 @@ def main():
     # due to straggling NCCL collectives during cleanup. Data is already
     # flushed, so just exit.
     import os as _os
-    _os.exit(0)
+    _os._exit(0)
 
 
 if __name__ == "__main__":

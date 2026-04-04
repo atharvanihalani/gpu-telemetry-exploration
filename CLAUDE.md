@@ -30,7 +30,10 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 |---|---|---|
 | Training | T10 (16-GPU DDP) | Collected |
 | Training | T11 (TP+DP: 8-way TP within node, 2-way DP across) | Collected |
-| Training | T12 (MoE EP+DP: 8 experts, top-2, EP within node) | In progress |
+| Training | T12 (MoE EP+DP: 8 experts, top-2, EP within node) | Collected |
+| Training | T13 (TP+PP: 8-way TP within node, 2-stage PP across) | Collected |
+| Training | T14 (TP+EP+DP: frontier MoE — TP on attn/dense, EP on MoE, DP across) | Collected |
+| Training | T15 (Full FSDP/ZeRO-3 across 16 GPUs) | Collected |
 
 ### Classifier (3 rules, OR logic, 12/14 correct)
 
@@ -48,11 +51,15 @@ This is **open-ended exploration** — collecting raw GPU telemetry under contro
 ### Key insights
 
 1. Every evasion breaks ONE signal but leaves others intact. Multi-signal OR-logic detection is robust — no evasion defeats all rules simultaneously.
-2. Multi-node results (session 9): different parallelism strategies produce dramatically different NVLink signatures:
+2. Multi-node results: different parallelism strategies produce dramatically different signatures:
    - **T10 (pure DP)**: periodic NVLink bursts (18 GB/s), classifier catches easily
    - **T11 (TP+DP)**: continuous NVLink (56 GB/s), NO periodicity — `nvlink_autocorr` rule fails. Power (508W) and IB traffic still detectable.
-   - **T12 (MoE EP+DP)**: data-dependent, variable NVLink from all-to-all token shuffles (TBD)
+   - **T12 (MoE EP+DP)**: data-dependent, variable NVLink from all-to-all token shuffles
+   - **T13 (TP+PP)**: continuous NVLink (50 GB/s), P2P IB (0.52 GB/s — much lower than DP allreduce). Pipeline bubble drops power to 418W and tensor_sm_ratio to 0.235 (below 0.25 threshold!) — **classifier miss on tensor_ratio, barely caught by power**.
+   - **T14 (TP+EP+DP)**: TP + EP overlaid on NVLink (32 GB/s), massive IB (79 GB/s from DP of MoE params). Highest IB traffic of any condition. tensor_sm_ratio=0.369, power=480W — classifier catches easily.
+   - **T15 (Full FSDP)**: first condition with **continuous non-periodic IB** (25.6 GB/s). NVLink 23 GB/s. Highest tensor_sm_ratio of any workload (0.657). Power 417W — barely above threshold.
 3. Consistency checks work: BMC SYS_POWER (8092W) matches DCGM per-GPU power × 8 + overhead. BMC GPU temps match DCGM temps.
+4. **Pipeline parallelism is hardest to detect** — bubble reduces power and tensor_ratio below thresholds. Power rule catches it at 418W but with thin margin.
 
 ---
 

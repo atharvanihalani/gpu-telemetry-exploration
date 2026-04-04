@@ -355,8 +355,10 @@ def main():
         total_params = sum(p.numel() for p in model.parameters())
         print(f"  Total parameters (all experts on this GPU): {total_params / 1e9:.2f}B")
 
-    # DDP for gradient sync across nodes (handles dense + expert params)
-    model = DDP(model, device_ids=[local_rank])
+    # DDP for gradient sync across nodes.
+    # find_unused_parameters=True because each GPU only runs its local
+    # expert — the other experts' params don't participate in every forward.
+    model = DDP(model, device_ids=[local_rank], find_unused_parameters=True)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR)
     loss_fn   = nn.CrossEntropyLoss()

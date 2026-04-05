@@ -5,3 +5,5 @@
 - [Multi-agent workflow](feedback_agents.md) — parallel worktree agents for independent tasks, review-then-merge
 - [Workload dev workflow](feedback_workflow.md) — chat→agent plans→review→agent implements→review. Overlap aggressively.
 - [Shelved variants](project_shelved_variants.md) — DiLoCo, large grad accum, exotic TP configs — revisit later
+- [Training run log](reference_training_run_log.md) — docs/training_run_log.md has single-node run summaries + errors
+- [Frontier inference landscape](project_inference_landscape.md) — TP within NVLink, EP across nodes for MoE, disaggregated prefill/decode

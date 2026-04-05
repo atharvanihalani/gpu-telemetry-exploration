@@ -176,3 +176,58 @@ First multi-node session. Moved from RunPod to Hyperbolic bare-metal cluster: 2x
 - **ToR switch:** Not accessible from host.
 
 **Files:** `workloads/train_t10.py`, `train_t11.py`, `train_t12.py`, `collect_ib.py`, `collect_bmc.py`, `docs/workload_variants_reference.md`
+
+---
+
+## Session 11 — Multi-Node Inference Planning (2026-04-05, Hyperbolic 2x H100)
+
+New cluster allocation (IPs changed). Session focused on planning and implementing multi-node inference workloads.
+
+### Node setup
+- Both nodes provisioned from scratch (Ubuntu 24.04). DCGM, ipmitool, python venv, torch 2.9.1+cu128 installed on both.
+- SSH configured between nodes (`ssh node0`, `ssh node1`, `ssh node0-ib`, `ssh node1-ib`). Enables launching both nodes from a single Claude session.
+- 8 IB interfaces per node (ib0-ib7), each with its own IP.
+- Repo synced to node 1 via rsync (excluding data/ and .git).
+
+### Inference landscape analysis
+Deep discussion of how frontier inference actually works. Key conclusions with high confidence:
+- **TP stays within NVLink domain** — never over IB. On H100 that's 8 GPUs/node. On GB200 NVL72 it's 72 GPUs across physical nodes but still NVLink.
+- **Frontier models are MoEs** — DeepSeek V3/R1, Gemini, likely GPT-4.
+- **EP across nodes** is the realistic multi-node inference pattern — all-to-all token shuffles for expert dispatch.
+- **Disaggregated prefill/decode** is emerging — separate GPU pools for compute-bound prefill vs memory-bound decode. Prefill pools at high load could look like training (biggest false positive risk).
+- **Continuous batching** is universal at scale (vLLM, SGLang, TRT-LLM).
+
+### I10 — Multi-node MoE inference (implementation in progress)
+**Plan:** `plans/i10_deepseek_v3_moe.md`. Two approaches attempted:
+
+**Approach 1: SGLang (failed)** — SGLang 0.5.9 has a Gloo connectivity bug in multi-node mode. The Gloo CPU process group tries to create cross-node connections on localhost (127.0.0.1), which obviously fails. Tried `GLOO_SOCKET_IFNAME=lo`, `=ib0`, `=ens10f0np0` — none worked. The `--enable-dp-attention` flag is required for `--dp > 1 --nnodes > 1`. Root cause: SGLang's `launch_server` spawns workers differently from torchrun and doesn't properly configure Gloo addresses.
+
+**Approach 2: vLLM (failed)** — Installing vLLM 0.19.0 upgraded torch from 2.9.1 to 2.10.0, breaking SGLang's sgl_kernel. vLLM itself failed with Triton kernel incompatibility on H100.
+
+**Approach 3: torchrun (works)** — Rewrote `infer_i10.py` as T14's model architecture (TP+EP) but forward-only, launched via torchrun. Debug run succeeded: ~1250 forward passes in 200s across both nodes. Key changes from T14:
+- No backward pass, no optimizer, no `replicate()` (DDP)
+- EP group spans all 16 GPUs (cross-node) instead of per-node, so all-to-all goes over IB
+- N_EXPERTS=16 (one per GPU across both nodes)
+- `model.eval()` + `torch.no_grad()`
+
+### DeepSeek V3 downloaded
+- 642 GB downloaded to node 0, rsynced to node 1 over IB (completed quickly).
+- Next step: write inference script that loads DeepSeek V3 via HuggingFace across 16 GPUs. Challenge: manual TP+EP loading for a 671B MoE is nontrivial without SGLang/vLLM.
+- Alternative: run independent single-node inference on each node (TP=8, no cross-node comms) for realistic power/tensor_ratio signatures.
+
+### New TODO items added
+- Power capping (`nvidia-smi -pl`) — feasible on bare-metal
+- Gradient compression (PowerSGD via `ddp_comm_hooks`) — reduces IB 10-100x, real frontier technique
+- I10 server-mode re-run (deferred — SGLang multi-node needs fixing first)
+
+### Dependency management lessons
+- SGLang and vLLM fight over torch versions. SGLang 0.5.9 wants torch 2.9.1, vLLM 0.19.0 upgrades to 2.10.0.
+- **Both nodes must have matching torch versions** — NCCL errors if mismatched.
+- For multi-node torchrun workloads, install torch from default PyPI (not cu124 index) to get 2.9.1+cu128 consistently.
+- Node setup should use `pip install torch torchvision` (no `--index-url`) for consistency.
+
+### Plans directory reorganized
+- `plans/implemented/` → `plans/implemented_single_node/` (13 files)
+- New `plans/implemented_multi_node/` (6 files: T10-T15)
+
+**Files:** `workloads/infer_i10.py` (torchrun-based MoE inference), `plans/i10_deepseek_v3_moe.md`

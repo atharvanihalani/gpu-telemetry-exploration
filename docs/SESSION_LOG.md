@@ -231,3 +231,27 @@ Deep discussion of how frontier inference actually works. Key conclusions with h
 - New `plans/implemented_multi_node/` (6 files: T10-T15)
 
 **Files:** `workloads/infer_i10.py` (torchrun-based MoE inference), `plans/i10_deepseek_v3_moe.md`
+
+---
+
+## Session 12 — Power↔Temperature Coupling (2026-07-04, local analysis only)
+
+No cluster access — pure analysis of existing CSVs on Atharva's Mac. Question: **is temperature a lagged indicator of power?** Motivation: if temps are independently measurable/reported, they can consistency-check reported power data (anti-spoofing for workload verification). Spoofing analysis itself deferred.
+
+### Findings
+
+- **Temp = power through a two-time-constant thermal filter.** Fit on E3 (GPU 0, steady phase, natural 30s/10s power square wave): fast pole τ≈0.2s (die+coldplate, unresolvable at 10Hz with 1°C-quantized temps, gain ~27 m°C/W) + slow pole τ≈46s (heatsink/coolant loop, gain ~39 m°C/W). RMS 1.5°C, R²=0.991 on a 40°C signal.
+- **Model selection:** 1 bucket fits at RMS 3.0°C (compromise τ=16s describing nothing real); 2 buckets 1.5°C; 3 buckets 1.4°C (diminishing — residual is mostly the 1°C sensor quantization). Two is the right complexity.
+- **Params transfer across workloads:** E3-fitted knobs predict T1/I2/T4/E2 temps within 0.45–2.9°C RMS with only a per-run baseline shift. Thermal params are a property of GPU+cooling, not workload.
+- **Cross-correlation alone is misleading** here: peak at lag≈0 (r=0.956) because the fast pole dominates amplitude. "Starts instantly, finishes slowly" — lag (shift) and time constant (stretch) are different quantities.
+- **Gallery over all 20 conditions** (full runs incl. startup transient, node-mean, 80 bins): power↔temp correlation **0.73–0.98, median 0.93**. Low-r panels are exactly the low-power-swing runs (B1 46W, E4 73W, I2 20W) — nothing to follow. Where power swings, r≥0.85 always.
+- **Spoof-check prototype (preview, deferred):** predict temp from reported power via fitted model, compare to measured. Flat-power spoof on E3 → 18.3°C RMS (trivially caught); 0.8× scaled power → 4.0°C vs honest 0.5–3°C (thin margin — baseline refit absorbs scale error at steady state; transients betray it).
+
+### Anomaly logged
+During E3 OFF windows, power ramps down **linearly** 690→150W over ~10s instead of dropping sharply — too slow for DCGM's ~1s averaging. NVML measurement artifact vs real decay? Undug.
+
+### Notes for future sessions
+- DCGM temp and BMC GPU temps are the **same die sensor over two trust paths** (driver vs sideband bus) — not physically independent. For a removed sensor: HBM temp (DCGM field 140, one-line collector add) and BMC inlet/board sensors (`ipmitool sensor list` — check next cluster session).
+- Natural next steps: cross-domain check (DCGM power vs BMC temp on T10–T15, τ_slow=46s resolvable at BMC's 2s rate); per-GPU fit consistency across all conditions; challenge-response idea (verifier requests brief pause, checks thermal transient).
+
+**Files:** `analysis/temp_follows_power.py` (new dir for standalone analysis scripts), `plots/12_temp_follows_power.png`

@@ -2,7 +2,7 @@
 
 For each condition, plot node-mean power (gray) and temp (blue) over the FULL
 run (including startup, where the power step makes the thermal chase visible),
-both min-max normalized so a 700W run and a 130W run are visually comparable.
+with real units on twin y-axes: power (W) on the left, temp (°C) on the right.
 Annotate with the plain Pearson correlation of the binned series.
 
 Session 12 finding: r = 0.73-0.98 across all 20 conditions; low-r panels are
@@ -45,31 +45,31 @@ def load_binned(key):
     return b.power_w.values, b.temp_c.values, dur
 
 
-def norm(x):
-    rng = x.max() - x.min()
-    return (x - x.min()) / rng if rng > 0 else np.full_like(x, 0.5)
-
-
 def main():
-    fig, axes = plt.subplots(5, 4, figsize=(16, 14))
+    fig, axes = plt.subplots(5, 4, figsize=(18, 14))
     fig.suptitle("Temperature follows power — every recorded condition\n"
-                 "gray = power, blue = temp (each min-max normalized over the full run)",
+                 "gray = power (W, left axis, fixed 0-700W), blue = temp (°C, right axis, fixed 25-70°C)",
                  fontsize=14, y=0.995)
 
     for ax, (key, label) in zip(axes.flat, CONDITIONS):
         P, T, dur = load_binned(key)
         r = np.corrcoef(P, T)[0, 1]
         x = np.linspace(0, dur / 60, len(P))
-        ax.plot(x, norm(P), color="#898781", lw=1.4, label="power")
-        ax.plot(x, norm(T), color="#2a78d6", lw=1.4, label="temp")
+        axt = ax.twinx()
+        lp, = ax.plot(x, P, color="#898781", lw=1.4, label="power (W)")
+        lt, = axt.plot(x, T, color="#2a78d6", lw=1.4, label="temp (°C)")
+        ax.set_ylim(0, 700)  # common scale: H100 TDP
+        axt.set_ylim(25, 70)  # common temp scale across panels
         ax.set_title(f"{label}   r={r:+.2f}", fontsize=10)
         ax.text(0.98, 0.04, f"ΔP={P.max()-P.min():.0f}W",
                 transform=ax.transAxes, ha="right", fontsize=8, color="#888")
-        ax.set_yticks([])
-        ax.tick_params(labelsize=8)
+        ax.tick_params(labelsize=8, colors="#898781", labelcolor="#66645f")
+        axt.tick_params(labelsize=8, colors="#2a78d6", labelcolor="#2a78d6")
+        ax.tick_params(axis="x", colors="black", labelcolor="black")
         ax.set_xlabel("min", fontsize=8, labelpad=1)
+        if ax is axes.flat[0]:
+            ax.legend(handles=[lp, lt], fontsize=8, loc="lower right")
 
-    axes.flat[0].legend(fontsize=8, loc="lower right")
     fig.tight_layout()
     out = os.path.join(ROOT, "plots", "12_temp_follows_power.png")
     fig.savefig(out, dpi=130)
